@@ -1,0 +1,428 @@
+package lsp
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/pawnkit/pawn-analysis/query"
+	"github.com/pawnkit/pawn-analysis/sema"
+	"github.com/pawnkit/pawn-api/pawnapi"
+	coresource "github.com/pawnkit/pawnkit-core/source"
+	lintrules "github.com/pawnkit/pawnlint/pkg/rules"
+)
+
+func TestDidChangeRejectsStaleVersion(t *testing.T) {
+	uri := tempDocumentURI(t)
+	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: []byte("main() {}"), Version: 2}
+	s := &server{
+		documents: map[string]*document{uri: doc},
+		snapshot:  query.New(query.Document{URI: coresource.URI(uri), Text: doc.Text, Version: 2}),
+	}
+	params, _ := json.Marshal(map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": 1},
+		"contentChanges": []map[string]any{{"text": "changed"}},
+	})
+	if err := s.didChange(params); err != nil {
+		t.Fatal(err)
+	}
+	if string(doc.Text) != "main() {}" || doc.Version != 2 {
+		t.Fatalf("stale change applied: %+v", doc)
+	}
+}
+
+func TestServerPublishesDiagnosticsAndFixes(t *testing.T) {
+	uri := tempDocumentURI(t)
+	source := "main() { if (true); { return; } }\n"
+	messages := []any{
+		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}},
+		map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": uri, "version": 1, "text": source}}},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": nil},
+		map[string]any{"jsonrpc": "2.0", "method": "exit"},
+	}
+	var input bytes.Buffer
+	for _, value := range messages {
+		body, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = fmt.Fprintf(&input, "Content-Length: %d\r\n\r\n", len(body))
+		_, _ = input.Write(body)
+	}
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	for _, fragment := range []string{"textDocumentSync", "textDocument/publishDiagnostics", "empty-condition-body", "remove the stray semicolon", "quickfix"} {
+		if !strings.Contains(got, fragment) {
+			t.Fatalf("output does not contain %q: %s", fragment, got)
+		}
+	}
+}
+
+func TestServerFormatsDocument(t *testing.T) {
+	uri := tempDocumentURI(t)
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main(){new value=1;}\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "options": map[string]any{"tabSize": 2, "insertSpaces": true},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"documentFormattingProvider", "newText", "new value = 1"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("format output missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestServerPublishesSharedAnalysisDiagnostics(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		code string
+	}{
+		{"argument count", "Helper(a, b) {} main() { Helper(1); }", "pawn-analysis:sema/argument-count"},
+		{"not callable", "main() { new value; value(); }", "pawn-analysis:sema/not-callable"},
+		{"tag mismatch", "Float:Get() { return bool:true; }", "pawn-analysis:sema/tag-mismatch"},
+		{"unreachable", "main() { return; new value; }", "pawn-analysis:sema/unreachable"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			uri := tempDocumentURI(t)
+			var input bytes.Buffer
+			frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+			frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+				"textDocument": map[string]any{"uri": uri, "version": 1, "text": test.text},
+			}})
+			frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol", "params": map[string]any{
+				"textDocument": map[string]any{"uri": uri},
+			}})
+			frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+			var output bytes.Buffer
+			if err := Run(&input, &output); err != nil {
+				t.Fatal(err)
+			}
+			if count := strings.Count(output.String(), test.code); count != 1 {
+				t.Fatalf("shared diagnostic %s count = %d: %s", test.code, count, output.String())
+			}
+		})
+	}
+}
+
+func TestServerReturnsSharedDocumentSymbols(t *testing.T) {
+	uri := tempDocumentURI(t)
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "new counter;\nstock Helper(value) { return value; }"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"documentSymbolProvider", "counter", "Helper", "value"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestServerReturnsSharedDefinition(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "stock Helper() { return 1; }\nmain() { return Helper(); }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/definition", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 17},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"definitionProvider", `"line":0`, `"character":6`} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestServerReturnsIncludeDefinition(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "main.pwn")
+	include := filepath.Join(root, "includes", "helper.inc")
+	for _, dir := range []string{filepath.Dir(entry), filepath.Dir(include)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := `{"entry":"gamemodes/main.pwn","include_path":"includes","preset":"openmp","pawnkit":{"schemaVersion":1}}`
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text := "#include <helper>\nmain() { return Helper(); }"
+	if err := os.WriteFile(include, []byte("Helper() { return 1; }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri := coresource.FileURI(entry).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/definition", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 17},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	want := coresource.FileURI(include).String()
+	if !strings.Contains(output.String(), want) {
+		t.Fatalf("include definition URI %q missing: %s", want, output.String())
+	}
+}
+
+func TestServerReturnsSharedHover(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "stock Float:Measure(value, scale = 1) { return value; }\nmain() { return Measure(2); }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 17},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"hoverProvider", "stock Float:Measure (1..2 arguments)"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestServerReturnsSharedReferences(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "new counter;\nmain() { counter++; return counter; }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/references", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 5},
+		"context": map[string]any{"includeDeclaration": true},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "referencesProvider") {
+		t.Fatalf("references capability missing: %s", output.String())
+	}
+	if count := strings.Count(output.String(), `"uri":"`+uri+`"`); count != 4 {
+		t.Fatalf("reference count = %d: %s", count, output.String())
+	}
+}
+
+func TestAPINameResolver(t *testing.T) {
+	index, err := pawnapi.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := apiNameResolver{index: index}
+	if got := resolver.ResolveName("SetPlayerPos"); got != sema.NameFound {
+		t.Fatalf("SetPlayerPos = %v", got)
+	}
+	if got := resolver.ResolveName("NotInTheSeedDataset"); got != sema.NameUnknown {
+		t.Fatalf("unknown name = %v", got)
+	}
+	callable, ok := resolver.ResolveCallable("SetPlayerPos")
+	if !ok || callable.MinArgs == 0 || callable.MaxArgs < callable.MinArgs {
+		t.Fatalf("SetPlayerPos signature = %+v, ok=%v", callable, ok)
+	}
+	resolver.profile = "nonexistent-profile"
+	if got := resolver.ResolveName("SetPlayerPos"); got != sema.NameUnknown {
+		t.Fatalf("unavailable name = %v", got)
+	}
+}
+
+func TestSafeFixRequiresKnownSafeRule(t *testing.T) {
+	t.Parallel()
+
+	registry := lintrules.Default()
+	if !safeFix(registry, "empty-condition-body") {
+		t.Fatal("known safe fix was rejected")
+	}
+	if safeFix(registry, "external/example/fix") {
+		t.Fatal("unknown fix was accepted")
+	}
+}
+
+func TestLoadProjectIncludes(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "main.pwn")
+	include := filepath.Join(root, "includes", "helper.inc")
+	for _, dir := range []string{filepath.Dir(entry), filepath.Dir(include)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := `{"entry":"gamemodes/main.pwn","include_path":"includes","preset":"openmp","pawnkit":{"schemaVersion":1}}`
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("#include <helper>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(include, []byte("Helper() {}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, profile := loadProjectIncludes(entry)
+	if resolver == nil {
+		t.Fatal("project resolver was not loaded")
+	}
+	if profile == "" {
+		t.Fatal("project profile was not selected")
+	}
+	content, _, ok := resolver.Resolve(coresource.FileURI(entry).String(), "helper", true)
+	if !ok || string(content) != "Helper() {}" {
+		t.Fatalf("resolved=%v content=%q", ok, content)
+	}
+}
+
+func TestOffsetPositionUsesUTF16(t *testing.T) {
+	source := []byte("a😀b\nç")
+	position := offsetPosition(source, len("a😀"))
+	if position.Line != 0 || position.Character != 3 {
+		t.Fatalf("position = %+v", position)
+	}
+	position = offsetPosition(source, len("a😀b\nç"))
+	if position.Line != 1 || position.Character != 1 {
+		t.Fatalf("position = %+v", position)
+	}
+}
+
+func TestOffsetPositionClampsInvalidUTF8Boundary(t *testing.T) {
+	position := offsetPosition([]byte("a😀b"), 2)
+	if position.Line != 0 || position.Character != 1 {
+		t.Fatalf("position = %+v", position)
+	}
+}
+
+func TestReadFrameRejectsMissingLength(t *testing.T) {
+	if _, err := readFrame(bufioReader("Header: value\r\n\r\n")); err == nil {
+		t.Fatal("missing length was accepted")
+	}
+}
+
+func TestReadFrameRejectsOversizedLength(t *testing.T) {
+	if _, err := readFrame(bufioReader("Content-Length: 999999999999\r\n\r\n")); err == nil {
+		t.Fatal("oversized length was accepted")
+	}
+}
+
+func TestReadFrameRejectsDuplicateLength(t *testing.T) {
+	if _, err := readFrame(bufioReader("Content-Length: 1\r\nContent-Length: 1\r\n\r\nx")); err == nil {
+		t.Fatal("duplicate length was accepted")
+	}
+}
+
+func TestReadFrameRejectsLongHeader(t *testing.T) {
+	header := "X-Test: " + strings.Repeat("x", 5000) + "\r\n\r\n"
+	if _, err := readFrame(bufioReader(header)); err == nil {
+		t.Fatal("long header was accepted")
+	}
+}
+
+func TestServerSurvivesMalformedMessage(t *testing.T) {
+	var input bytes.Buffer
+	writeFrame(&input, `{"jsonrpc": "2.0", "id": 1, "method"`) // truncated/invalid JSON
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": map[string]any{}})
+	writeFrame(&input, `{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {}}}`) // bad params, uriPath fails
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatalf("Run returned error for malformed messages instead of continuing: %v", err)
+	}
+	if !strings.Contains(output.String(), "textDocumentSync") {
+		t.Fatalf("server did not process the valid initialize request after a malformed one: %s", output.String())
+	}
+	if !strings.Contains(output.String(), `"code":-32700`) {
+		t.Fatalf("parse error response missing: %s", output.String())
+	}
+}
+
+func TestServerRespondsToInvalidRequestParams(t *testing.T) {
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": "https://example.test/main.pwn", "version": 1, "text": ""},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"id":2`) || !strings.Contains(output.String(), `"code":-32602`) {
+		t.Fatalf("invalid params response missing: %s", output.String())
+	}
+}
+
+func frame(t *testing.T, buf *bytes.Buffer, value any) {
+	t.Helper()
+	body, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFrame(buf, string(body))
+}
+
+func writeFrame(buf *bytes.Buffer, body string) {
+	fmt.Fprintf(buf, "Content-Length: %d\r\n\r\n%s", len(body), body)
+}
+
+func bufioReader(value string) *bufio.Reader {
+	return bufio.NewReader(strings.NewReader(value))
+}
+
+func tempDocumentURI(t *testing.T) string {
+	t.Helper()
+	return coresource.FileURI(filepath.Join(t.TempDir(), "test.pwn")).String()
+}
