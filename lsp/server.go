@@ -368,6 +368,7 @@ func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
 	ctx, cancel := context.WithCancel(context.Background())
 	doc.cancel = cancel
 	s.workers.Go(func() {
+		defer cancel()
 		defer close(doc.ready)
 		_ = s.publish(ctx, doc, snapshot)
 	})
