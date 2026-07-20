@@ -22,6 +22,7 @@ import (
 	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
 	"github.com/pawnkit/pawn-project/fsx"
+	projectinclude "github.com/pawnkit/pawn-project/include"
 	projectmodel "github.com/pawnkit/pawn-project/project"
 	"github.com/pawnkit/pawnfmt"
 	corediagnostic "github.com/pawnkit/pawnkit-core/diagnostic"
@@ -48,21 +49,24 @@ type document struct {
 	Includes    preprocess.IncludeResolver
 	Names       sema.Resolver
 	Analysis    *analysis.Result
+	Revision    int64
 	ready       chan struct{}
 	cancel      context.CancelFunc
 }
 
 type server struct {
-	in        *bufio.Reader
-	out       io.Writer
-	documents map[string]*document
-	names     sema.Resolver
-	snapshot  *query.Snapshot
-	shutdown  bool
-	mu        sync.Mutex
-	writeMu   sync.Mutex
-	workers   sync.WaitGroup
-	rules     *lint.Registrar
+	in              *bufio.Reader
+	out             io.Writer
+	documents       map[string]*document
+	names           sema.Resolver
+	snapshot        *query.Snapshot
+	shutdown        bool
+	mu              sync.Mutex
+	writeMu         sync.Mutex
+	workers         sync.WaitGroup
+	rules           *lint.Registrar
+	includeRoots    []string
+	projectRevision int64
 }
 
 type apiNameResolver struct {
@@ -93,13 +97,32 @@ func (r projectIncludeResolver) Resolve(fromURI, path string, angle bool) ([]byt
 	return content, coresource.FileURI(resolved).String(), true
 }
 
-func loadProjectIncludes(path string) (preprocess.IncludeResolver, string) {
+func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeResolver, string) {
 	fsys := fsx.OS{}
 	project, err := projectmodel.Load(coresource.NewRegistry(), fsys, path, projectmodel.Options{})
 	if err != nil {
 		return nil, ""
 	}
-	return projectIncludeResolver{resolver: project.IncludeResolver(), fsys: fsys}, project.Selection().ProfileID
+	roots := append([]string{}, project.Paths().IncludeRoots...)
+	roots = append(roots, extraRoots...)
+	resolver := projectinclude.New(fsys, roots)
+	return projectIncludeResolver{resolver: resolver, fsys: fsys}, project.Selection().ProfileID
+}
+
+func cleanIncludeRoots(roots []string) []string {
+	cleaned := make([]string, 0, len(roots))
+	seen := make(map[string]bool)
+	for _, root := range roots {
+		if !filepath.IsAbs(root) {
+			continue
+		}
+		root = filepath.Clean(root)
+		if !seen[root] {
+			seen[root] = true
+			cleaned = append(cleaned, root)
+		}
+	}
+	return cleaned
 }
 
 func (r apiNameResolver) ResolveName(name string) sema.NameState {
@@ -222,6 +245,16 @@ func (s *server) handle(request message) (bool, error) {
 	}
 	switch request.Method {
 	case "initialize":
+		var params struct {
+			InitializationOptions struct {
+				IncludePaths []string `json:"includePaths"`
+			} `json:"initializationOptions"`
+		}
+		if len(request.Params) != 0 {
+			_ = json.Unmarshal(request.Params, &params)
+		}
+		s.includeRoots = cleanIncludeRoots(params.InitializationOptions.IncludePaths)
+		s.projectRevision++
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": 1, "codeActionProvider": true,
@@ -248,6 +281,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.didChange(request.Params)
 	case "textDocument/didClose":
 		return false, s.didClose(request.Params)
+	case "workspace/didChangeWatchedFiles":
+		return false, s.reloadProjects()
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
 	case "textDocument/documentSymbol":
@@ -283,7 +318,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	includes, profile := loadProjectIncludes(path)
+	includes, profile := loadProjectIncludes(path, s.includeRoots...)
 	names := s.names
 	if resolver, ok := names.(apiNameResolver); ok {
 		resolver.profile = profile
@@ -292,6 +327,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Text: []byte(params.TextDocument.Text),
 		Version: params.TextDocument.Version, Includes: includes, Names: names, ready: make(chan struct{}),
+		Revision: s.projectRevision,
 	}
 	if previous := s.document(doc.URI); previous != nil && previous.cancel != nil {
 		previous.cancel()
@@ -333,6 +369,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Text: []byte(params.ContentChanges[len(params.ContentChanges)-1].Text),
 		Version: params.TextDocument.Version, Includes: doc.Includes, Names: doc.Names, ready: make(chan struct{}),
+		Revision: doc.Revision,
 	}
 	var accepted bool
 	s.snapshot, accepted = s.snapshot.Update(query.Document{URI: coresource.URI(next.URI), Text: next.Text, Version: int64(next.Version)})
@@ -362,6 +399,42 @@ func (s *server) didClose(raw json.RawMessage) error {
 	delete(s.documents, params.TextDocument.URI)
 	s.mu.Unlock()
 	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": params.TextDocument.URI, "diagnostics": []any{}})
+}
+
+func (s *server) reloadProjects() error {
+	s.mu.Lock()
+	documents := make([]*document, 0, len(s.documents))
+	for _, doc := range s.documents {
+		documents = append(documents, doc)
+		if doc.cancel != nil {
+			doc.cancel()
+		}
+	}
+	s.projectRevision++
+	revision := s.projectRevision
+	s.mu.Unlock()
+
+	for _, doc := range documents {
+		includes, profile := loadProjectIncludes(doc.Path, s.includeRoots...)
+		names := s.names
+		if resolver, ok := names.(apiNameResolver); ok {
+			resolver.profile = profile
+			names = resolver
+		}
+		next := &document{
+			URI: doc.URI, Path: doc.Path, Text: doc.Text, Version: doc.Version,
+			Includes: includes, Names: names, Revision: revision, ready: make(chan struct{}),
+		}
+		s.mu.Lock()
+		if s.documents[doc.URI] == doc {
+			s.documents[doc.URI] = next
+			s.mu.Unlock()
+			s.schedulePublish(next, s.snapshot)
+		} else {
+			s.mu.Unlock()
+		}
+	}
+	return nil
 }
 
 func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
@@ -395,7 +468,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
-		Revision: fmt.Sprintf("%s:%T:%T", doc.Path, doc.Includes, doc.Names),
+		Revision: fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
 	})
 	if analysisErr != nil {
 		return analysisErr

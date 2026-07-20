@@ -325,6 +325,60 @@ func TestLoadProjectIncludes(t *testing.T) {
 	}
 }
 
+func TestLoadPawnKitIncludePaths(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "main.pwn")
+	include := filepath.Join(root, "include", "math.inc")
+	for _, dir := range []string{filepath.Dir(entry), filepath.Dir(include)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	manifest := `{"entry":"gamemodes/main.pwn","pawnkit":{"schemaVersion":1,"includePaths":["include"]}}`
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("#include <math>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(include, []byte("Add(left, right) { return left + right; }"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, _ := loadProjectIncludes(entry)
+	if resolver == nil {
+		t.Fatal("project resolver was not loaded")
+	}
+	content, _, ok := resolver.Resolve(coresource.FileURI(entry).String(), "math", true)
+	if !ok || !strings.Contains(string(content), "Add") {
+		t.Fatalf("resolved=%v content=%q", ok, content)
+	}
+}
+
+func TestLoadProjectIncludesWithExtraRoots(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	extra := filepath.Join(t.TempDir(), "include")
+	if err := os.MkdirAll(extra, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("#include <pawntest>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(extra, "pawntest.inc"), []byte("#define TEST(%0)"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, _ := loadProjectIncludes(entry, extra)
+	content, _, ok := resolver.Resolve(coresource.FileURI(entry).String(), "pawntest", true)
+	if !ok || !strings.Contains(string(content), "TEST") {
+		t.Fatalf("resolved=%v content=%q", ok, content)
+	}
+}
+
 func TestOffsetPositionUsesUTF16(t *testing.T) {
 	source := []byte("a😀b\nç")
 	position := offsetPosition(source, len("a😀"))
