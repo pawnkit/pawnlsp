@@ -2,7 +2,13 @@
 
 Notable changes are recorded here.
 
-## Unreleased
+## 0.1.1 - 2026-07-20
+
+### Added
+
+- Release archives for Linux, macOS, and Windows.
+
+## 0.1.0 - 2026-07-19
 
 ### Added
 

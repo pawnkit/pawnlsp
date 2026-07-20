@@ -18,12 +18,12 @@ github.com/pawnkit/pawn-parser v1.0.1-0.20260718155913-7441df7a8611 h1:Z71MW6BTl
 github.com/pawnkit/pawn-parser v1.0.1-0.20260718155913-7441df7a8611/go.mod h1:NxVFywG2/diopWaow+Fj7cNtb7NxTxFswaV8MrXSCBg=
 github.com/pawnkit/pawn-project v0.1.0 h1:+1Gxp2U8EhFEQJuZNPZRtGoB7Ge92j3L2pSbryN9TMo=
 github.com/pawnkit/pawn-project v0.1.0/go.mod h1:YpfzOLsIYMyp9ztXNC5DbNOOIFhMYUxrk/epKb3rPlg=
-github.com/pawnkit/pawnfmt v1.2.1-0.20260719110530-45b1db8d62a2 h1:RB01HEsFcNEfRO1VFLkQ3Jqjp7rJ2SRRoABhKdE9N60=
-github.com/pawnkit/pawnfmt v1.2.1-0.20260719110530-45b1db8d62a2/go.mod h1:0qf0OL6ie0GCaB5XOOtVxb2cXgqHx7lhbzARpJe9StM=
+github.com/pawnkit/pawnfmt v1.2.1 h1:S1Zb0X1D+Uotdcn7uKpEsJQijWDI9arzkin2sEB+dZI=
+github.com/pawnkit/pawnfmt v1.2.1/go.mod h1:0qf0OL6ie0GCaB5XOOtVxb2cXgqHx7lhbzARpJe9StM=
 github.com/pawnkit/pawnkit-core v0.1.0 h1:clhoN/nr+JyNMAcFTlubStPd3q4VeCNf44MJgYmFaDM=
 github.com/pawnkit/pawnkit-core v0.1.0/go.mod h1:jGhXHEEzr8juezaRhh/AkGzX6S4eGQnprB83vrI1peU=
-github.com/pawnkit/pawnlint v1.0.2-0.20260719113700-0a66959ba30d h1:H8RtAW0Go6htfuXi05cbxyBkxkN5PMWR8QeJ1uNREPw=
-github.com/pawnkit/pawnlint v1.0.2-0.20260719113700-0a66959ba30d/go.mod h1:8OPSq1HR1P3QBwrwWCZcLxmuIExYnoMlJEr5XnwHHT4=
+github.com/pawnkit/pawnlint v1.0.2 h1:M2D9ZKnDWRVtfdypAR1w1aP8lJZ0xHh1wqRtO7UfFmw=
+github.com/pawnkit/pawnlint v1.0.2/go.mod h1:8OPSq1HR1P3QBwrwWCZcLxmuIExYnoMlJEr5XnwHHT4=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5CcY=

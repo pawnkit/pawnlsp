@@ -6,9 +6,9 @@ require (
 	github.com/pawnkit/pawn-analysis v0.1.0
 	github.com/pawnkit/pawn-api v0.1.0
 	github.com/pawnkit/pawn-project v0.1.0
-	github.com/pawnkit/pawnfmt v1.2.1-0.20260719110530-45b1db8d62a2
+	github.com/pawnkit/pawnfmt v1.2.1
 	github.com/pawnkit/pawnkit-core v0.1.0
-	github.com/pawnkit/pawnlint v1.0.2-0.20260719113700-0a66959ba30d
+	github.com/pawnkit/pawnlint v1.0.2
 )
 
 require (
