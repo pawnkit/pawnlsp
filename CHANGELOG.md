@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.7 - 2026-07-21
+
+### Fixed
+
+- Used the active include graph for workspace diagnostics.
+
 ## 0.9.6 - 2026-07-21
 
 ### Fixed

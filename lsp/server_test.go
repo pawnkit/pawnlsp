@@ -134,10 +134,17 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	mainPath := filepath.Join(root, "main.pwn")
 	brokenPath := filepath.Join(root, "broken.pwn")
 	unrelatedPath := filepath.Join(root, "unrelated.pwn")
+	dependencyPath := filepath.Join(root, "dependencies", "stdlib", "open.mp.inc")
+	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(brokenPath, []byte("stock Value;\nstock Value;\n"), 0o600); err != nil {
+	if err := os.WriteFile(dependencyPath, []byte("#define OPEN_MP\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(brokenPath, []byte("#include <open.mp>\nstock Value;\nstock Value;\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(unrelatedPath, []byte("#include <not-installed>\n"), 0o600); err != nil {
@@ -163,6 +170,12 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "not-installed") {
 		t.Fatalf("workspace diagnostics included an inactive source: %s", output.String())
+	}
+	if strings.Contains(output.String(), "include-not-found") {
+		t.Fatalf("workspace diagnostics ignored the active include graph: %s", output.String())
+	}
+	if strings.Contains(output.String(), coresource.FileURI(dependencyPath).String()) {
+		t.Fatalf("workspace diagnostics included a dependency: %s", output.String())
 	}
 }
 
