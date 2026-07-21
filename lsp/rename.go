@@ -104,7 +104,7 @@ func (s *server) renameTarget(doc *document, offset coresource.Offset, name stri
 		}
 	}
 	table := navigationTable(doc.Analysis)
-	item, ok := symbolAt(table, offset)
+	item, ok := symbolAt(table, doc.Analysis.File, offset)
 	if ok {
 		scope, found := table.Scope(item.Scope)
 		return item, found && scope.Kind == symbol.ScopeFile, true

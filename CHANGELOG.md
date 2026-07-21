@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.8.1 - 2026-07-21
+
+### Fixed
+
+- Kept hover, references, highlights, rename, and call hierarchy lookups within the requested source file.
+- Covered multiline test macros in pull-diagnostic regression tests.
+
 ## 0.8.0 - 2026-07-21
 
 ### Added

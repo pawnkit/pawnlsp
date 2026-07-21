@@ -322,7 +322,7 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	if err := os.WriteFile(projectInclude, []byte("stock Add(a, b) { return a + b; }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(extraInclude, []byte("#define TEST(%0) forward test_%0(); public test_%0()\n"), 0o600); err != nil {
+	if err := os.WriteFile(extraInclude, []byte("#define TEST(%0) \\\n    forward test_%0(); \\\n    public test_%0()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -335,6 +335,9 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String(), "version": 1, "text": text},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String()},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
 		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String()},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
@@ -372,6 +375,49 @@ func TestServerReturnsSharedHover(t *testing.T) {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("missing %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestHoverKeepsIncludedFileSpansSeparate(t *testing.T) {
+	root := t.TempDir()
+	includeRoot := filepath.Join(root, "include")
+	if err := os.MkdirAll(includeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mathSource := "// Multiplies two values.\nstock Multiply(left, right) { return left * right; }\n"
+	playerSource := "#include <math>\n\n// Calculates the starting score.\nstock StartingScore(bonus) { return bonus; }\n"
+	if err := os.WriteFile(filepath.Join(includeRoot, "math.inc"), []byte(mathSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	playerPath := filepath.Join(includeRoot, "player.inc")
+	if err := os.WriteFile(playerPath, []byte(playerSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{
+  "entry": "include/player.inc",
+  "preset": "openmp",
+  "pawnkit": {"schemaVersion": 1, "includePaths": ["include"]}
+}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uri := coresource.FileURI(playerPath).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": playerSource},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 3, "character": 8},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "Calculates the starting score.") || strings.Contains(output.String(), "Multiplies two values.") {
+		t.Fatalf("hover used an included-file span: %s", output.String())
 	}
 }
 

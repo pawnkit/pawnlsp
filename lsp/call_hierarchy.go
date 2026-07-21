@@ -26,7 +26,7 @@ func (s *server) prepareCallHierarchy(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, []any{})
 	}
-	item, ok := symbolAt(navigationTable(doc.Analysis), offset)
+	item, ok := symbolAt(navigationTable(doc.Analysis), doc.Analysis.File, offset)
 	if !ok || !item.Kind.IsCallable() {
 		return s.respond(id, []any{})
 	}

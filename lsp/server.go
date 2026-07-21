@@ -739,7 +739,7 @@ func (s *server) hover(id, raw json.RawMessage) error {
 			"range":    offsetRange(doc.Text, start, end),
 		})
 	}
-	item, ok := symbolAt(navigationTable(doc.Analysis), offset)
+	item, ok := symbolAt(navigationTable(doc.Analysis), doc.Analysis.File, offset)
 	if ok {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": hoverText(doc, item)},
@@ -1038,14 +1038,14 @@ func navigationTable(result *analysis.Result) *symbol.Table {
 	return result.Symbols
 }
 
-func symbolAt(table *symbol.Table, offset coresource.Offset) (symbol.Symbol, bool) {
+func symbolAt(table *symbol.Table, file coresource.FileID, offset coresource.Offset) (symbol.Symbol, bool) {
 	for _, ref := range table.References {
-		if ref.Resolved != 0 && ref.Span.Contains(offset) {
+		if ref.Resolved != 0 && ref.Span.File == file && ref.Span.Contains(offset) {
 			return table.Symbol(ref.Resolved)
 		}
 	}
 	for _, item := range table.Symbols {
-		if item.Span.Contains(offset) {
+		if item.Span.File == file && item.Span.Contains(offset) {
 			return item, true
 		}
 	}
@@ -1088,7 +1088,7 @@ func (s *server) references(id, raw json.RawMessage) error {
 		return s.respond(id, []any{})
 	}
 	table := navigationTable(doc.Analysis)
-	item, ok := symbolAt(table, offset)
+	item, ok := symbolAt(table, doc.Analysis.File, offset)
 	name := ""
 	global := false
 	if ok {

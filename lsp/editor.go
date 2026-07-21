@@ -21,7 +21,7 @@ func (s *server) documentHighlights(id, raw json.RawMessage) error {
 		return s.respond(id, []any{})
 	}
 	table := navigationTable(doc.Analysis)
-	item, found := symbolAt(table, offset)
+	item, found := symbolAt(table, doc.Analysis.File, offset)
 	name, _, _ := identifierAt(doc.Text, int(offset))
 	global := !found
 	if found {
