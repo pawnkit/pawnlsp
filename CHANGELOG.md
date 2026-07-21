@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.3.0 - 2026-07-21
+
+### Added
+
+- Added completion for project symbols, macros, and profile-specific API entries.
+- Added semantic highlighting for project and API symbols.
+- Added signature help for project functions, macros, and API calls.
+
 ## 0.2.1 - 2026-07-21
 
 ### Fixed

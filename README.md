@@ -17,12 +17,12 @@ The server provides:
 
 - diagnostics on open and change
 - safe quick fixes
+- completion, signature help, and semantic highlighting
 - document symbols, definitions, hover, and references
 - whole-document formatting through pawnfmt
 - Pawn project and `pawnlint.toml` discovery
 
-The editor must send `file://` document URIs. Restart the language server
-after changing configuration.
+The editor must send `file://` document URIs.
 
 ## Contributing
 

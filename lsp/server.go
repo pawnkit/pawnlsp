@@ -258,8 +258,14 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": 1, "codeActionProvider": true,
+				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
 				"documentSymbolProvider": true, "definitionProvider": true,
 				"hoverProvider": true, "referencesProvider": true,
+				"semanticTokensProvider": map[string]any{
+					"legend": map[string]any{"tokenTypes": semanticTokenTypes, "tokenModifiers": semanticTokenModifiers},
+					"full":   true,
+				},
+				"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{","}},
 				"documentFormattingProvider": true,
 			},
 			"serverInfo": map[string]any{"name": "pawnlsp"},
@@ -287,6 +293,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.didChangeConfiguration(request.Params)
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
+	case "textDocument/completion":
+		return false, s.completion(request.ID, request.Params)
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
 	case "textDocument/definition":
@@ -295,6 +303,10 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.hover(request.ID, request.Params)
 	case "textDocument/references":
 		return false, s.references(request.ID, request.Params)
+	case "textDocument/semanticTokens/full":
+		return false, s.semanticTokens(request.ID, request.Params)
+	case "textDocument/signatureHelp":
+		return false, s.signatureHelp(request.ID, request.Params)
 	case "textDocument/formatting":
 		return false, s.formatting(request.ID, request.Params)
 	default:
