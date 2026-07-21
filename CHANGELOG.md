@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.8.2 - 2026-07-21
+
+### Fixed
+
+- Preserved variadic tag sets in local function hover and signature help.
+
 ## 0.8.1 - 2026-07-21
 
 ### Fixed

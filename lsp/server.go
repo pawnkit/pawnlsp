@@ -949,7 +949,30 @@ func declarationText(text []byte, span coresource.Span) string {
 	}
 	end := int(span.End)
 	limit := min(len(text), end+512)
-	for end < limit && text[end] != '{' && text[end] != ';' {
+	parentheses, brackets := 0, 0
+	for end < limit {
+		switch text[end] {
+		case '(':
+			parentheses++
+		case ')':
+			if parentheses > 0 {
+				parentheses--
+			}
+		case '[':
+			brackets++
+		case ']':
+			if brackets > 0 {
+				brackets--
+			}
+		case '{':
+			if parentheses == 0 && brackets == 0 {
+				return strings.Join(strings.Fields(string(text[start:end])), " ")
+			}
+		case ';':
+			if parentheses == 0 && brackets == 0 {
+				return strings.Join(strings.Fields(string(text[start:end])), " ")
+			}
+		}
 		end++
 	}
 	return strings.Join(strings.Fields(string(text[start:end])), " ")

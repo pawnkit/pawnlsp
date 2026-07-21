@@ -200,9 +200,9 @@ func declarationParameters(declaration string) []string {
 	start, depth := 0, 0
 	for index := range len(text) {
 		switch text[index] {
-		case '[', '(':
+		case '[', '(', '{':
 			depth++
-		case ']', ')':
+		case ']', ')', '}':
 			if depth > 0 {
 				depth--
 			}

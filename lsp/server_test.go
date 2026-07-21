@@ -378,6 +378,23 @@ func TestServerReturnsSharedHover(t *testing.T) {
 	}
 }
 
+func TestVariadicTagSetDeclaration(t *testing.T) {
+	t.Parallel()
+
+	text := []byte("native printf(const format[], {Float, _}:...);\n")
+	start := bytes.Index(text, []byte("printf"))
+	declaration := declarationText(text, coresource.Span{
+		Start: coresource.Offset(start), End: coresource.Offset(start + len("printf")),
+	})
+	if declaration != "native printf(const format[], {Float, _}:...)" {
+		t.Fatalf("declaration = %q", declaration)
+	}
+	parameters := declarationParameters(declaration)
+	if len(parameters) != 2 || parameters[1] != "{Float, _}:..." {
+		t.Fatalf("parameters = %q", parameters)
+	}
+}
+
 func TestHoverKeepsIncludedFileSpansSeparate(t *testing.T) {
 	root := t.TempDir()
 	includeRoot := filepath.Join(root, "include")
