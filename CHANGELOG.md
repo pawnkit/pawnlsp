@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.1.3 - 2026-07-21
+
+### Fixed
+
+- Removed false missing-include diagnostics for project and editor-managed include paths.
+
 ## 0.1.2 - 2026-07-20
 
 ### Fixed

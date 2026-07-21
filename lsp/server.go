@@ -455,8 +455,16 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	if err != nil {
 		diagnostics = []diagnostic.Diagnostic{{RuleID: "configuration", Severity: diagnostic.SeverityError, Message: err.Error(), Filename: doc.Path}}
 	}
+	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
+		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
+		Revision: fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
+	})
+	if analysisErr != nil {
+		return analysisErr
+	}
+	diagnostics = reconcileIncludeDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
-	items := make([]lspDiagnostic, 0, len(diagnostics))
+	items := make([]lspDiagnostic, 0, len(diagnostics)+len(shared.Diagnostics))
 	for _, finding := range diagnostics {
 		items = append(items, lspDiagnostic{
 			Range:    diagnosticRange(doc.Text, finding),
@@ -465,13 +473,6 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 			Source:   "pawnlint",
 			Message:  finding.Message,
 		})
-	}
-	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
-		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
-		Revision: fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
-	})
-	if analysisErr != nil {
-		return analysisErr
 	}
 	doc.Analysis = shared
 	for _, finding := range shared.Diagnostics {
@@ -491,6 +492,23 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 		return ctx.Err()
 	}
 	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": doc.URI, "version": doc.Version, "diagnostics": items})
+}
+
+func reconcileIncludeDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result) []diagnostic.Diagnostic {
+	missing := make(map[[2]int]bool)
+	for _, item := range shared.Diagnostics {
+		if item.Code == string(preprocess.CodeIncludeNotFound) && item.Primary.File == shared.File {
+			missing[[2]int{int(item.Primary.Start), int(item.Primary.End)}] = true
+		}
+	}
+	result := items[:0]
+	for _, item := range items {
+		key := [2]int{item.Range.Start.Offset, item.Range.End.Offset}
+		if item.RuleID != "missing-include" || missing[key] {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func (s *server) cancelDocuments() {

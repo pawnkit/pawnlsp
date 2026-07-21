@@ -208,6 +208,53 @@ func TestServerReturnsIncludeDefinition(t *testing.T) {
 	}
 }
 
+func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "main.pwn")
+	projectInclude := filepath.Join(root, "include", "math.inc")
+	extraRoot := filepath.Join(root, "managed")
+	extraInclude := filepath.Join(extraRoot, "pawntest.inc")
+	for _, path := range []string{entry, projectInclude, extraInclude} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{
+  "entry": "gamemodes/main.pwn",
+  "preset": "openmp",
+  "pawnkit": {"schemaVersion": 1, "includePaths": ["include"]}
+}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectInclude, []byte("stock Add(a, b) { return a + b; }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(extraInclude, []byte("stock Assert(value) { return value; }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	text := "#include <math>\n#include <pawntest>\nmain() { Assert(Add(20, 22) == 42); }\n"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
+		"initializationOptions": map[string]any{"includePaths": []string{extraRoot}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String(), "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String()},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "include-not-found") || strings.Contains(output.String(), "missing-include") {
+		t.Fatalf("resolved include reported missing: %s", output.String())
+	}
+}
+
 func TestServerReturnsSharedHover(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "stock Float:Measure(value, scale = 1) { return value; }\nmain() { return Measure(2); }"
