@@ -9,6 +9,8 @@ import (
 	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
+	parser "github.com/pawnkit/pawn-parser"
+	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
 type textPositionParams struct {
@@ -29,12 +31,12 @@ func (s *server) completion(id, raw json.RawMessage) error {
 		return s.respond(id, []any{})
 	}
 	prefix, _, _ := identifierAt(doc.Text, int(offset))
-	items := completionItems(doc, prefix)
+	items := completionItems(doc, prefix, int(offset))
 	items = s.workspaceCompletionItems(items, prefix)
 	return s.respond(id, items)
 }
 
-func completionItems(doc *document, prefix string) []map[string]any {
+func completionItems(doc *document, prefix string, offset int) []map[string]any {
 	items := make([]map[string]any, 0)
 	seen := make(map[string]bool)
 	add := func(name string, item map[string]any) {
@@ -49,9 +51,12 @@ func completionItems(doc *document, prefix string) []map[string]any {
 	if doc != nil && doc.Analysis != nil {
 		if table := navigationTable(doc.Analysis); table != nil {
 			for _, item := range table.Symbols {
+				if !completionSymbolVisible(doc, table, item, offset) {
+					continue
+				}
 				candidate := map[string]any{
-					"kind":   completionSymbolKind(item.Kind),
-					"detail": symbolSummary(item),
+					"kind": completionSymbolKind(item.Kind), "detail": symbolSummary(item),
+					"sortText": "0_" + strings.ToLower(item.Name),
 				}
 				if documentation := localDocumentation(doc.Analysis, item); documentation != "" {
 					candidate["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
@@ -65,7 +70,9 @@ func completionItems(doc *document, prefix string) []map[string]any {
 				if macro.Kind == preprocess.MacroFunctionLike {
 					detail = macroSignature(macro)
 				}
-				add(macro.Name, map[string]any{"kind": 14, "detail": detail})
+				add(macro.Name, map[string]any{
+					"kind": 14, "detail": detail, "sortText": "1_" + strings.ToLower(macro.Name),
+				})
 			}
 		}
 	}
@@ -76,8 +83,8 @@ func completionItems(doc *document, prefix string) []map[string]any {
 				continue
 			}
 			item := map[string]any{
-				"kind":   completionAPIKind(entry.Kind),
-				"detail": apiDeclaration(entry),
+				"kind": completionAPIKind(entry.Kind), "detail": apiDeclaration(entry),
+				"sortText": "3_" + strings.ToLower(entry.Name),
 			}
 			if documentation := apiDocumentation(entry); documentation != "" {
 				item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
@@ -89,15 +96,45 @@ func completionItems(doc *document, prefix string) []map[string]any {
 		}
 	}
 
-	sort.Slice(items, func(i, j int) bool {
-		left, leftOK := items[i]["label"].(string)
-		right, rightOK := items[j]["label"].(string)
-		if !leftOK || !rightOK {
-			return false
-		}
-		return strings.ToLower(left) < strings.ToLower(right)
-	})
+	sort.Slice(items, func(i, j int) bool { return completionItemLess(items[i], items[j]) })
 	return items
+}
+
+func completionSymbolVisible(doc *document, table *symbol.Table, item symbol.Symbol, offset int) bool {
+	scope, ok := table.Scope(item.Scope)
+	if !ok || scope.Kind == symbol.ScopeFile {
+		return ok
+	}
+	if item.Span.Start > coresource.Offset(offset) || doc.Analysis == nil || doc.Analysis.Parse == nil {
+		return false
+	}
+	function, ok := callableByName(table, containingFunctionName(doc.Analysis.Parse.Syntax(), offset))
+	return ok && function.FuncScope != 0 && scopeWithin(table, item.Scope, function.FuncScope)
+}
+
+func containingFunctionName(root parser.SyntaxNode, offset int) string {
+	for _, node := range syntaxPath(root, offset) {
+		function, ok := parser.AsFunction(node)
+		if !ok {
+			continue
+		}
+		name, ok := function.Name()
+		if ok {
+			return name.Text()
+		}
+	}
+	return ""
+}
+
+func completionItemLess(left, right map[string]any) bool {
+	leftSort, _ := left["sortText"].(string)
+	rightSort, _ := right["sortText"].(string)
+	if leftSort != rightSort {
+		return leftSort < rightSort
+	}
+	leftLabel, _ := left["label"].(string)
+	rightLabel, _ := right["label"].(string)
+	return strings.ToLower(leftLabel) < strings.ToLower(rightLabel)
 }
 
 func completionSymbolKind(kind symbol.Kind) int {

@@ -2,6 +2,17 @@
 
 Notable changes are recorded here.
 
+## 0.8.0 - 2026-07-21
+
+### Added
+
+- Added incoming and outgoing call hierarchy for project functions.
+
+### Changed
+
+- Ranked local and project completions ahead of API entries.
+- Removed local variables from completion outside their declaring function.
+
 ## 0.7.0 - 2026-07-21
 
 ### Added

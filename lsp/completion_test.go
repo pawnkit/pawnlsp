@@ -83,6 +83,31 @@ func TestCompletionIncludesLocalDocumentation(t *testing.T) {
 	}
 }
 
+func TestCompletionKeepsLocalsInTheirFunction(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "stock First() { new hidden; }\nstock Second() { new visible;  }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 30},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"label":"visible"`) || !strings.Contains(output.String(), `"sortText":"0_visible"`) {
+		t.Fatalf("visible local missing: %s", output.String())
+	}
+	if strings.Contains(output.String(), `"label":"hidden"`) {
+		t.Fatalf("completion leaked a local from another function: %s", output.String())
+	}
+}
+
 func TestDeclarationDocumentation(t *testing.T) {
 	t.Parallel()
 

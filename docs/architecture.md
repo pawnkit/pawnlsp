@@ -15,6 +15,6 @@ LSP request
 Documents use immutable, versioned snapshots. New edits cancel older analysis,
 and stale results are discarded. Navigation waits for the current snapshot.
 Project source files are indexed in the background for cross-file navigation
-and workspace diagnostics. The index has file and byte limits.
+call hierarchy, and workspace diagnostics. The index has file and byte limits.
 
 Document formatting delegates to pawnfmt's public library API.

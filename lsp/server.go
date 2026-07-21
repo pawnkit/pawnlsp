@@ -266,6 +266,7 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": 1, "codeActionProvider": true,
+				"callHierarchyProvider":  true,
 				"diagnosticProvider":     map[string]any{"interFileDependencies": true, "workspaceDiagnostics": true},
 				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
 				"documentSymbolProvider": true, "definitionProvider": true,
@@ -314,6 +315,12 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.workspaceDiagnostics(request.ID)
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
+	case "textDocument/prepareCallHierarchy":
+		return false, s.prepareCallHierarchy(request.ID, request.Params)
+	case "callHierarchy/incomingCalls":
+		return false, s.incomingCalls(request.ID, request.Params)
+	case "callHierarchy/outgoingCalls":
+		return false, s.outgoingCalls(request.ID, request.Params)
 	case "textDocument/completion":
 		return false, s.completion(request.ID, request.Params)
 	case "textDocument/documentSymbol":

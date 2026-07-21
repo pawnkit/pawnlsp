@@ -289,6 +289,7 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 				seen[candidate.Name] = true
 				item := map[string]any{
 					"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
+					"sortText": "2_" + strings.ToLower(candidate.Name),
 				}
 				if documentation := localDocumentation(result, candidate); documentation != "" {
 					item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
@@ -297,11 +298,7 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 			}
 		}
 	}
-	sort.Slice(items, func(i, j int) bool {
-		left, leftOK := items[i]["label"].(string)
-		right, rightOK := items[j]["label"].(string)
-		return leftOK && rightOK && strings.ToLower(left) < strings.ToLower(right)
-	})
+	sort.Slice(items, func(i, j int) bool { return completionItemLess(items[i], items[j]) })
 	return items
 }
 

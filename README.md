@@ -18,7 +18,7 @@ The server provides:
 - diagnostics for open documents and indexed project files
 - safe quick fixes
 - documented completion, hover, signature help, and semantic highlighting
-- document and workspace symbols, definitions, hover, references, and rename
+- document and workspace symbols, definitions, hover, references, rename, and call hierarchy
 - document highlights, folding, and structural selection
 - whole-document, range, and format-on-type formatting through pawnfmt
 - parameter-name inlay hints
