@@ -43,6 +43,7 @@ type message struct {
 type document struct {
 	URI         string
 	Path        string
+	Root        string
 	Text        []byte
 	Version     int
 	Diagnostics []diagnostic.Diagnostic
@@ -66,6 +67,7 @@ type server struct {
 	workers         sync.WaitGroup
 	rules           *lint.Registrar
 	includeRoots    []string
+	workspaces      map[string]*workspaceIndex
 	projectRevision int64
 }
 
@@ -97,16 +99,21 @@ func (r projectIncludeResolver) Resolve(fromURI, path string, angle bool) ([]byt
 	return content, coresource.FileURI(resolved).String(), true
 }
 
-func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeResolver, string) {
+func loadProjectContext(path string, extraRoots ...string) (preprocess.IncludeResolver, string, string) {
 	fsys := fsx.OS{}
 	project, err := projectmodel.Load(coresource.NewRegistry(), fsys, path, projectmodel.Options{})
 	if err != nil {
-		return nil, ""
+		return nil, "", filepath.Dir(path)
 	}
 	roots := append([]string{}, project.Paths().IncludeRoots...)
 	roots = append(roots, extraRoots...)
 	resolver := projectinclude.New(fsys, roots)
-	return projectIncludeResolver{resolver: resolver, fsys: fsys}, project.Selection().ProfileID
+	return projectIncludeResolver{resolver: resolver, fsys: fsys}, project.Selection().ProfileID, project.Root()
+}
+
+func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeResolver, string) {
+	resolver, profile, _ := loadProjectContext(path, extraRoots...)
+	return resolver, profile
 }
 
 func cleanIncludeRoots(roots []string) []string {
@@ -203,6 +210,7 @@ func Run(in io.Reader, out io.Writer) error {
 	s := &server{
 		in: bufio.NewReader(in), out: out, documents: make(map[string]*document),
 		names: apiNameResolver{index: apiIndex}, snapshot: query.New(), rules: lintrules.Default(),
+		workspaces: make(map[string]*workspaceIndex),
 	}
 	for {
 		body, err := readFrame(s.in)
@@ -261,11 +269,13 @@ func (s *server) handle(request message) (bool, error) {
 				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
 				"documentSymbolProvider": true, "definitionProvider": true,
 				"hoverProvider": true, "referencesProvider": true,
+				"renameProvider": map[string]any{"prepareProvider": true},
 				"semanticTokensProvider": map[string]any{
 					"legend": map[string]any{"tokenTypes": semanticTokenTypes, "tokenModifiers": semanticTokenModifiers},
 					"full":   true,
 				},
 				"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{","}},
+				"workspaceSymbolProvider":    true,
 				"documentFormattingProvider": true,
 			},
 			"serverInfo": map[string]any{"name": "pawnlsp"},
@@ -291,6 +301,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.reloadProjects()
 	case "workspace/didChangeConfiguration":
 		return false, s.didChangeConfiguration(request.Params)
+	case "workspace/symbol":
+		return false, s.workspaceSymbols(request.ID, request.Params)
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
 	case "textDocument/completion":
@@ -303,6 +315,10 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.hover(request.ID, request.Params)
 	case "textDocument/references":
 		return false, s.references(request.ID, request.Params)
+	case "textDocument/prepareRename":
+		return false, s.prepareRename(request.ID, request.Params)
+	case "textDocument/rename":
+		return false, s.rename(request.ID, request.Params)
 	case "textDocument/semanticTokens/full":
 		return false, s.semanticTokens(request.ID, request.Params)
 	case "textDocument/signatureHelp":
@@ -351,14 +367,14 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	includes, profile := loadProjectIncludes(path, s.includeRoots...)
+	includes, profile, root := loadProjectContext(path, s.includeRoots...)
 	names := s.names
 	if resolver, ok := names.(apiNameResolver); ok {
 		resolver.profile = profile
 		names = resolver
 	}
 	doc := &document{
-		URI: params.TextDocument.URI, Path: path, Text: []byte(params.TextDocument.Text),
+		URI: params.TextDocument.URI, Path: path, Root: root, Text: []byte(params.TextDocument.Text),
 		Version: params.TextDocument.Version, Includes: includes, Names: names, ready: make(chan struct{}),
 		Revision: s.projectRevision,
 	}
@@ -373,6 +389,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
 	s.schedulePublish(doc, s.snapshot)
+	s.startWorkspaceIndex(doc)
 	return nil
 }
 
@@ -400,7 +417,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 		doc.cancel()
 	}
 	next := &document{
-		URI: doc.URI, Path: doc.Path, Text: []byte(params.ContentChanges[len(params.ContentChanges)-1].Text),
+		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: []byte(params.ContentChanges[len(params.ContentChanges)-1].Text),
 		Version: params.TextDocument.Version, Includes: doc.Includes, Names: doc.Names, ready: make(chan struct{}),
 		Revision: doc.Revision,
 	}
@@ -413,6 +430,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	s.documents[next.URI] = next
 	s.mu.Unlock()
 	s.schedulePublish(next, s.snapshot)
+	s.restartWorkspaceIndex(next)
 	return nil
 }
 
@@ -425,12 +443,14 @@ func (s *server) didClose(raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	if doc := s.document(params.TextDocument.URI); doc != nil && doc.cancel != nil {
+	doc := s.document(params.TextDocument.URI)
+	if doc != nil && doc.cancel != nil {
 		doc.cancel()
 	}
 	s.mu.Lock()
 	delete(s.documents, params.TextDocument.URI)
 	s.mu.Unlock()
+	s.restartWorkspaceIndex(doc)
 	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": params.TextDocument.URI, "diagnostics": []any{}})
 }
 
@@ -444,18 +464,24 @@ func (s *server) reloadProjects() error {
 		}
 	}
 	s.projectRevision++
+	for _, index := range s.workspaces {
+		if index.cancel != nil {
+			index.cancel()
+		}
+	}
+	s.workspaces = make(map[string]*workspaceIndex)
 	revision := s.projectRevision
 	s.mu.Unlock()
 
 	for _, doc := range documents {
-		includes, profile := loadProjectIncludes(doc.Path, s.includeRoots...)
+		includes, profile, root := loadProjectContext(doc.Path, s.includeRoots...)
 		names := s.names
 		if resolver, ok := names.(apiNameResolver); ok {
 			resolver.profile = profile
 			names = resolver
 		}
 		next := &document{
-			URI: doc.URI, Path: doc.Path, Text: doc.Text, Version: doc.Version,
+			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Version: doc.Version,
 			Includes: includes, Names: names, Revision: revision, ready: make(chan struct{}),
 		}
 		s.mu.Lock()
@@ -463,6 +489,7 @@ func (s *server) reloadProjects() error {
 			s.documents[doc.URI] = next
 			s.mu.Unlock()
 			s.schedulePublish(next, s.snapshot)
+			s.startWorkspaceIndex(next)
 		} else {
 			s.mu.Unlock()
 		}
@@ -572,6 +599,11 @@ func (s *server) cancelDocuments() {
 			doc.cancel()
 		}
 	}
+	for _, index := range s.workspaces {
+		if index.cancel != nil {
+			index.cancel()
+		}
+	}
 }
 
 func (s *server) document(uri string) *document {
@@ -665,6 +697,18 @@ func (s *server) definition(id, raw json.RawMessage) error {
 		}
 		return s.respond(id, analysisLocation(doc, decl.Span))
 	}
+	name, _, _ := identifierAt(doc.Text, int(offset))
+	occurrences := s.workspaceOccurrences(name)
+	if workspaceDeclarationCount(occurrences) == 1 {
+		for _, occurrence := range occurrences {
+			if occurrence.declaration {
+				return s.respond(id, map[string]any{
+					"uri":   occurrence.uri.String(),
+					"range": offsetRange(occurrence.text, int(occurrence.span.Start), int(occurrence.span.End)),
+				})
+			}
+		}
+	}
 	return s.respond(id, nil)
 }
 
@@ -698,6 +742,17 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		})
 	}
 	name, start, end := identifierAt(doc.Text, int(offset))
+	occurrences := s.workspaceOccurrences(name)
+	if workspaceDeclarationCount(occurrences) == 1 {
+		for _, occurrence := range occurrences {
+			if occurrence.declaration {
+				return s.respond(id, map[string]any{
+					"contents": map[string]any{"kind": "markdown", "value": "```pawn\n" + declarationText(occurrence.text, occurrence.span) + "\n```"},
+					"range":    offsetRange(doc.Text, start, end),
+				})
+			}
+		}
+	}
 	entry, ok := apiEntry(doc.Names, name)
 	if !ok {
 		return s.respond(id, nil)
@@ -805,21 +860,25 @@ func localDeclaration(result *analysis.Result, item symbol.Symbol) string {
 		if file.URI != uri.String() {
 			continue
 		}
-		start := int(item.Span.Start)
-		if start < 0 || start >= len(file.Content) {
-			return ""
-		}
-		for start > 0 && file.Content[start-1] != '\n' {
-			start--
-		}
-		end := int(item.Span.End)
-		limit := min(len(file.Content), end+512)
-		for end < limit && file.Content[end] != '{' && file.Content[end] != ';' {
-			end++
-		}
-		return strings.Join(strings.Fields(string(file.Content[start:end])), " ")
+		return declarationText(file.Content, item.Span)
 	}
 	return ""
+}
+
+func declarationText(text []byte, span coresource.Span) string {
+	start := int(span.Start)
+	if start < 0 || start >= len(text) {
+		return ""
+	}
+	for start > 0 && text[start-1] != '\n' {
+		start--
+	}
+	end := int(span.End)
+	limit := min(len(text), end+512)
+	for end < limit && text[end] != '{' && text[end] != ';' {
+		end++
+	}
+	return strings.Join(strings.Fields(string(text[start:end])), " ")
 }
 
 func apiHover(entry pawnapi.Entry) string {
@@ -962,6 +1021,38 @@ func (s *server) references(id, raw json.RawMessage) error {
 	}
 	table := navigationTable(doc.Analysis)
 	item, ok := symbolAt(table, offset)
+	name := ""
+	global := false
+	if ok {
+		name = item.Name
+		if scope, found := table.Scope(item.Scope); found {
+			global = scope.Kind == symbol.ScopeFile
+		}
+	} else {
+		name, _, _ = identifierAt(doc.Text, int(offset))
+		global = name != ""
+	}
+	if global {
+		occurrences := s.workspaceOccurrences(name)
+		hasDeclaration := false
+		for _, occurrence := range occurrences {
+			hasDeclaration = hasDeclaration || occurrence.declaration
+		}
+		_, api := apiEntry(doc.Names, name)
+		if hasDeclaration || api {
+			locations := make([]map[string]any, 0, len(occurrences))
+			for _, occurrence := range occurrences {
+				if occurrence.declaration && !params.Context.IncludeDeclaration {
+					continue
+				}
+				locations = append(locations, map[string]any{
+					"uri":   occurrence.uri.String(),
+					"range": offsetRange(occurrence.text, int(occurrence.span.Start), int(occurrence.span.End)),
+				})
+			}
+			return s.respond(id, locations)
+		}
+	}
 	if !ok {
 		return s.respond(id, []any{})
 	}
@@ -978,6 +1069,14 @@ func (s *server) references(id, raw json.RawMessage) error {
 }
 
 func analysisLocation(doc *document, span coresource.Span) map[string]any {
+	uri, text := spanDocument(doc, span)
+	return map[string]any{
+		"uri":   uri,
+		"range": offsetRange(text, int(span.Start), int(span.End)),
+	}
+}
+
+func spanDocument(doc *document, span coresource.Span) (string, []byte) {
 	uri, text := doc.URI, doc.Text
 	if span.File != doc.Analysis.File {
 		if resolved, ok := doc.Analysis.Registry.URI(span.File); ok {
@@ -990,10 +1089,7 @@ func analysisLocation(doc *document, span coresource.Span) map[string]any {
 			}
 		}
 	}
-	return map[string]any{
-		"uri":   uri,
-		"range": offsetRange(text, int(span.Start), int(span.End)),
-	}
+	return uri, text
 }
 
 func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {

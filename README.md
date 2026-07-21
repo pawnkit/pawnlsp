@@ -18,7 +18,7 @@ The server provides:
 - diagnostics on open and change
 - safe quick fixes
 - completion, signature help, and semantic highlighting
-- document symbols, definitions, hover, and references
+- document and workspace symbols, definitions, hover, references, and rename
 - whole-document formatting through pawnfmt
 - Pawn project and `pawnlint.toml` discovery
 

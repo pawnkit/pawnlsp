@@ -147,6 +147,61 @@ func TestServerReturnsSharedDocumentSymbols(t *testing.T) {
 	}
 }
 
+func TestServerReturnsWorkspaceSymbols(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "main.pwn")
+	other := filepath.Join(root, "filterscripts", "admin.pwn")
+	for _, path := range []string{entry, other} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"gamemodes/main.pwn","preset":"openmp"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mainText := "main() { return RemoteHelper(1); }\n"
+	if err := os.WriteFile(entry, []byte(mainText), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("stock RemoteHelper(playerid) { return playerid; }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri := coresource.FileURI(entry).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": mainText},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/symbol", "params": map[string]any{"query": "remote"}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/references", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 20},
+		"context": map[string]any{"includeDeclaration": true},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "textDocument/prepareRename", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 20},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 5, "method": "textDocument/rename", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 20}, "newName": "GlobalHelper",
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"workspaceSymbolProvider", "RemoteHelper", "filterscripts/admin.pwn", coresource.FileURI(other).String()} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("workspace symbol output missing %q: %s", value, output.String())
+		}
+	}
+	if !strings.Contains(output.String(), `"placeholder":"RemoteHelper"`) {
+		t.Fatalf("prepare rename output missing: %s", output.String())
+	}
+	if count := strings.Count(output.String(), `"newText":"GlobalHelper"`); count != 2 {
+		t.Fatalf("rename edit count = %d: %s", count, output.String())
+	}
+}
+
 func TestServerReturnsSharedDefinition(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "stock Helper() { return 1; }\nmain() { return Helper(); }"

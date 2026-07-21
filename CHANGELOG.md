@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.4.0 - 2026-07-21
+
+### Added
+
+- Added bounded background indexing for project Pawn sources.
+- Added workspace symbol search and cross-file navigation.
+- Added safe local and workspace symbol renaming.
+
 ## 0.3.0 - 2026-07-21
 
 ### Added

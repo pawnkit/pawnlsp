@@ -30,6 +30,7 @@ func (s *server) completion(id, raw json.RawMessage) error {
 	}
 	prefix, _, _ := identifierAt(doc.Text, int(offset))
 	items := completionItems(doc, prefix)
+	items = s.workspaceCompletionItems(items, prefix)
 	return s.respond(id, items)
 }
 

@@ -23,7 +23,7 @@ func (s *server) signatureHelp(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, nil)
 	}
-	signature, ok := callSignature(doc, name)
+	signature, ok := s.callSignature(doc, name)
 	if !ok {
 		return s.respond(id, nil)
 	}
@@ -55,7 +55,7 @@ type signatureInformation struct {
 	Parameters    []string
 }
 
-func callSignature(doc *document, name string) (signatureInformation, bool) {
+func (s *server) callSignature(doc *document, name string) (signatureInformation, bool) {
 	if doc == nil || doc.Analysis == nil {
 		return signatureInformation{}, false
 	}
@@ -71,6 +71,15 @@ func callSignature(doc *document, name string) (signatureInformation, bool) {
 		if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok && macro.Kind == preprocess.MacroFunctionLike {
 			label := macroSignature(macro)
 			return signatureInformation{Label: label, Parameters: declarationParameters(label)}, true
+		}
+	}
+	occurrences := s.workspaceOccurrences(name)
+	if workspaceDeclarationCount(occurrences) == 1 {
+		for _, occurrence := range occurrences {
+			if occurrence.declaration {
+				declaration := declarationText(occurrence.text, occurrence.span)
+				return signatureInformation{Label: declaration, Parameters: declarationParameters(declaration)}, true
+			}
 		}
 	}
 	entry, ok := apiEntry(doc.Names, name)
