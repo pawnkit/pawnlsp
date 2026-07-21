@@ -133,14 +133,21 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.pwn")
 	brokenPath := filepath.Join(root, "broken.pwn")
+	unrelatedPath := filepath.Join(root, "unrelated.pwn")
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(brokenPath, []byte("stock Value;\nstock Value;\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unrelatedPath, []byte("#include <not-installed>\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	uri := coresource.FileURI(mainPath).String()
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main() {}\n"},
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "#include \"broken.pwn\"\nmain() {}\n"},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
@@ -153,6 +160,9 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("workspace diagnostics missing %q: %s", value, output.String())
 		}
+	}
+	if strings.Contains(output.String(), "not-installed") {
+		t.Fatalf("workspace diagnostics included an inactive source: %s", output.String())
 	}
 }
 

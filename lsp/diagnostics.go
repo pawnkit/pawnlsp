@@ -6,6 +6,7 @@ import (
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawnkit-core/diagnostic"
+	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
 func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
@@ -30,12 +31,34 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 	for _, index := range s.workspaces {
 		indexes = append(indexes, index)
 	}
+	documents := make([]*document, 0, len(s.documents))
+	for _, doc := range s.documents {
+		documents = append(documents, doc)
+	}
 	s.mu.Unlock()
+	active := make(map[string]map[coresource.URI]bool)
+	for _, doc := range documents {
+		<-doc.ready
+		if doc.Analysis == nil || doc.Analysis.Preprocess == nil {
+			continue
+		}
+		files := active[doc.Root]
+		if files == nil {
+			files = make(map[coresource.URI]bool)
+			active[doc.Root] = files
+		}
+		for _, file := range doc.Analysis.Preprocess.Files {
+			files[coresource.URI(file.URI)] = true
+		}
+	}
 
 	items := make([]map[string]any, 0)
 	for _, index := range indexes {
 		<-index.ready
 		for uri, result := range index.files {
+			if files := active[index.root]; len(files) > 0 && !files[uri] {
+				continue
+			}
 			text := analysisSource(result)
 			items = append(items, map[string]any{
 				"uri": uri.String(), "kind": "full", "items": analysisDiagnosticItems(result, text),

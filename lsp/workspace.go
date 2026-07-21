@@ -347,7 +347,7 @@ func workspaceSourceFiles(root string) ([]string, error) {
 }
 
 func skipWorkspaceDirectory(name string) bool {
-	return strings.HasPrefix(name, ".") || name == "build" || name == "dist" || name == "node_modules"
+	return strings.HasPrefix(name, ".") || name == "build" || name == "dependencies" || name == "dist" || name == "node_modules"
 }
 
 func workspaceSourceExtension(extension string) bool {

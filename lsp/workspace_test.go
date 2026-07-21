@@ -15,6 +15,7 @@ func TestWorkspaceSourceFiles(t *testing.T) {
 		filepath.Join(root, "README.md"),
 		filepath.Join(root, ".git", "ignored.pwn"),
 		filepath.Join(root, "build", "generated.pwn"),
+		filepath.Join(root, "dependencies", "package", "external.inc"),
 	}
 	for _, path := range paths {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

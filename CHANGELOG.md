@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.6 - 2026-07-21
+
+### Fixed
+
+- Kept dependencies and inactive source trees out of workspace diagnostics.
+
 ## 0.9.5 - 2026-07-21
 
 ### Fixed
