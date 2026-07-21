@@ -156,6 +156,44 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	}
 }
 
+func TestWorkspaceAndOpenDiagnosticsAcceptTagMacros(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.pwn")
+	helperPath := filepath.Join(root, "helper.inc")
+	targetPath := filepath.Join(root, "target.inc")
+	files := map[string]string{
+		helperPath: "#define AnyTag {_, bool, Float}\n#define HandleTag {Handle}\nnative Accept(AnyTag:value);\nnative UseHandle(HandleTag:value);\n",
+		targetPath: "stock Check() { Accept(String:1); UseHandle(Handle:1); }\n",
+	}
+	for path, text := range files {
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(mainPath).String(), "version": 1, "text": "main() {}\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(targetPath).String(), "version": 1, "text": files[targetPath]},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(targetPath).String()},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "pawn-analysis:sema/tag-mismatch") {
+		t.Fatalf("tag macro produced inconsistent diagnostics: %s", output.String())
+	}
+}
+
 func TestServerReturnsSharedDocumentSymbols(t *testing.T) {
 	uri := tempDocumentURI(t)
 	var input bytes.Buffer

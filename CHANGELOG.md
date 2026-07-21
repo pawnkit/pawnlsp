@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.5 - 2026-07-21
+
+### Fixed
+
+- Kept PawnPlus tag-macro diagnostics consistent when files are opened or closed.
+
 ## 0.9.4 - 2026-07-21
 
 ### Fixed
