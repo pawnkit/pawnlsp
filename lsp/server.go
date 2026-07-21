@@ -747,6 +747,12 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		})
 	}
 	name, start, end := identifierAt(doc.Text, int(offset))
+	if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok {
+		return s.respond(id, map[string]any{
+			"contents": map[string]any{"kind": "markdown", "value": macroHover(doc.Analysis.Preprocess, macro)},
+			"range":    offsetRange(doc.Text, start, end),
+		})
+	}
 	occurrences := s.workspaceOccurrences(name)
 	if workspaceDeclarationCount(occurrences) == 1 {
 		for _, occurrence := range occurrences {
@@ -770,6 +776,38 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		"contents": map[string]any{"kind": "markdown", "value": apiHover(entry)},
 		"range":    offsetRange(doc.Text, start, end),
 	})
+}
+
+func macroHover(result *preprocess.Result, macro preprocess.Macro) string {
+	declaration := macroSignature(macro)
+	if result != nil && int(macro.File) < len(result.Files) {
+		if source := macroDefinition(result.Files[macro.File].Content, macro.DefSpan); source != "" {
+			declaration = source
+		}
+	}
+	return "```pawn\n" + declaration + "\n```"
+}
+
+func macroDefinition(text []byte, span preprocess.ByteRange) string {
+	if span.Start < 0 || span.End <= span.Start || span.End > len(text) {
+		return ""
+	}
+	start := bytes.LastIndexByte(text[:span.Start], '\n') + 1
+	end := span.End
+	limit := min(len(text), start+512)
+	for end < limit {
+		newline := bytes.IndexByte(text[end:limit], '\n')
+		if newline < 0 {
+			end = limit
+			break
+		}
+		end += newline
+		if !bytes.HasSuffix(bytes.TrimSpace(text[start:end]), []byte{'\\'}) {
+			break
+		}
+		end++
+	}
+	return strings.TrimSpace(string(text[start:end]))
 }
 
 func includeAt(result *analysis.Result, offset int) (preprocess.Include, bool) {

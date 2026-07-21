@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawn-analysis/query"
 	"github.com/pawnkit/pawn-analysis/sema"
 	"github.com/pawnkit/pawn-api/pawnapi"
@@ -375,6 +376,40 @@ func TestServerReturnsSharedHover(t *testing.T) {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("missing %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestServerReturnsMacroHover(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "#define LIMIT 42\nmain() { return LIMIT; }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 18},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "#define LIMIT 42") {
+		t.Fatalf("macro hover missing: %s", output.String())
+	}
+}
+
+func TestMacroDefinitionIncludesContinuationLines(t *testing.T) {
+	t.Parallel()
+
+	text := []byte("#define DOUBLE(%0) \\\n    ((%0) * 2)\nmain() {}\n")
+	start := bytes.Index(text, []byte("#define"))
+	end := bytes.Index(text, []byte("DOUBLE")) + len("DOUBLE")
+	got := macroDefinition(text, preprocess.ByteRange{Start: start, End: end})
+	if !strings.Contains(got, "((%0) * 2)") {
+		t.Fatalf("macro definition = %q", got)
 	}
 }
 

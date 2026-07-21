@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.0 - 2026-07-21
+
+### Added
+
+- Added source hover for object-like and function-like macros.
+
 ## 0.8.2 - 2026-07-21
 
 ### Fixed
