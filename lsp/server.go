@@ -481,7 +481,7 @@ func (s *server) didClose(raw json.RawMessage) error {
 	delete(s.documents, params.TextDocument.URI)
 	s.mu.Unlock()
 	s.restartWorkspaceIndex(doc)
-	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": params.TextDocument.URI, "diagnostics": []any{}})
+	return nil
 }
 
 func (s *server) reloadProjects() error {
@@ -555,11 +555,10 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
 	doc.Analysis = shared
-	items := documentDiagnosticItems(doc)
 	if ctx.Err() != nil || s.document(doc.URI) != doc {
 		return ctx.Err()
 	}
-	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": doc.URI, "version": doc.Version, "diagnostics": items})
+	return nil
 }
 
 func reconcileDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result) []diagnostic.Diagnostic {
@@ -972,9 +971,29 @@ func localDeclaration(result *analysis.Result, item symbol.Symbol) string {
 		if file.URI != uri.String() {
 			continue
 		}
+		if item.Kind == symbol.KindConstant {
+			return declarationLine(file.Content, item.Span)
+		}
 		return declarationText(file.Content, item.Span)
 	}
 	return ""
+}
+
+func declarationLine(text []byte, span coresource.Span) string {
+	start := int(span.Start)
+	if start < 0 || start >= len(text) {
+		return ""
+	}
+	for start > 0 && text[start-1] != '\n' {
+		start--
+	}
+	end := bytes.IndexByte(text[start:], '\n')
+	if end < 0 {
+		end = len(text)
+	} else {
+		end += start
+	}
+	return strings.TrimSuffix(strings.TrimSpace(string(text[start:end])), ",")
 }
 
 func declarationText(text []byte, span coresource.Span) string {
@@ -1420,10 +1439,6 @@ func (s *server) respond(id json.RawMessage, result any) error {
 
 func (s *server) respondError(id json.RawMessage, code int, message string) error {
 	return s.write(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}})
-}
-
-func (s *server) notify(method string, params any) error {
-	return s.write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 }
 
 func (s *server) write(value any) error {

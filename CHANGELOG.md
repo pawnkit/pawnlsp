@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.9.1 - 2026-07-21
+
+### Fixed
+
+- Removed duplicate diagnostics in clients that support pull diagnostics.
+- Limited enum-member hover to the selected member.
+
 ## 0.9.0 - 2026-07-21
 
 ### Added

@@ -37,14 +37,15 @@ func TestDidChangeRejectsStaleVersion(t *testing.T) {
 	}
 }
 
-func TestServerPublishesDiagnosticsAndFixes(t *testing.T) {
+func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	uri := tempDocumentURI(t)
 	source := "main() { if (true); { return; } }\n"
 	messages := []any{
 		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}},
 		map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": uri, "version": 1, "text": source}}},
-		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/codeAction", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
-		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": nil},
+		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
+		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": nil},
 		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	}
 	var input bytes.Buffer
@@ -61,10 +62,13 @@ func TestServerPublishesDiagnosticsAndFixes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := output.String()
-	for _, fragment := range []string{"textDocumentSync", "textDocument/publishDiagnostics", "empty-condition-body", "remove the stray semicolon", "quickfix"} {
+	for _, fragment := range []string{"textDocumentSync", "diagnosticProvider", "empty-condition-body", "remove the stray semicolon", "quickfix"} {
 		if !strings.Contains(got, fragment) {
 			t.Fatalf("output does not contain %q: %s", fragment, got)
 		}
+	}
+	if strings.Contains(got, "textDocument/publishDiagnostics") {
+		t.Fatalf("server returned push diagnostics: %s", got)
 	}
 }
 
@@ -109,7 +113,7 @@ func TestServerPublishesSharedAnalysisDiagnostics(t *testing.T) {
 			frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
 				"textDocument": map[string]any{"uri": uri, "version": 1, "text": test.text},
 			}})
-			frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentSymbol", "params": map[string]any{
+			frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
 				"textDocument": map[string]any{"uri": uri},
 			}})
 			frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
@@ -401,6 +405,32 @@ func TestServerReturnsMacroHover(t *testing.T) {
 	}
 }
 
+func TestServerReturnsEnumMemberHover(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "enum SAMPLE_RECORD\n{\n    SAMPLE_ID,\n    bool:SAMPLE_ENABLED,\n    Float:SAMPLE_RATIO\n};\nmain() { return SAMPLE_ENABLED; }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 6, "character": 20},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if !strings.Contains(got, "```pawn\\nbool:SAMPLE_ENABLED\\n```") {
+		t.Fatalf("enum member hover missing: %s", got)
+	}
+	if strings.Contains(got, "Float:SAMPLE_RATIO") {
+		t.Fatalf("enum member hover includes adjacent members: %s", got)
+	}
+}
+
 func TestMacroDefinitionIncludesContinuationLines(t *testing.T) {
 	t.Parallel()
 
@@ -545,7 +575,7 @@ func TestServerReturnsSharedReferences(t *testing.T) {
 	if !strings.Contains(output.String(), "referencesProvider") {
 		t.Fatalf("references capability missing: %s", output.String())
 	}
-	if count := strings.Count(output.String(), `"uri":"`+uri+`"`); count != 4 {
+	if count := strings.Count(output.String(), `"uri":"`+uri+`"`); count != 3 {
 		t.Fatalf("reference count = %d: %s", count, output.String())
 	}
 }
