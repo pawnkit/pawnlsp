@@ -270,16 +270,19 @@ func (s *server) handle(request message) (bool, error) {
 				"documentSymbolProvider": true, "definitionProvider": true,
 				"documentHighlightProvider": true,
 				"foldingRangeProvider":      true,
+				"inlayHintProvider":         true,
 				"hoverProvider":             true, "referencesProvider": true,
 				"renameProvider": map[string]any{"prepareProvider": true},
 				"semanticTokensProvider": map[string]any{
 					"legend": map[string]any{"tokenTypes": semanticTokenTypes, "tokenModifiers": semanticTokenModifiers},
 					"full":   true,
 				},
-				"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{","}},
-				"selectionRangeProvider":     true,
-				"workspaceSymbolProvider":    true,
-				"documentFormattingProvider": true,
+				"signatureHelpProvider":            map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{","}},
+				"selectionRangeProvider":           true,
+				"workspaceSymbolProvider":          true,
+				"documentFormattingProvider":       true,
+				"documentRangeFormattingProvider":  true,
+				"documentOnTypeFormattingProvider": map[string]any{"firstTriggerCharacter": "}", "moreTriggerCharacter": []string{";"}},
 			},
 			"serverInfo": map[string]any{"name": "pawnlsp"},
 		})
@@ -318,6 +321,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.definition(request.ID, request.Params)
 	case "textDocument/foldingRange":
 		return false, s.foldingRanges(request.ID, request.Params)
+	case "textDocument/inlayHint":
+		return false, s.inlayHints(request.ID, request.Params)
 	case "textDocument/hover":
 		return false, s.hover(request.ID, request.Params)
 	case "textDocument/references":
@@ -334,6 +339,10 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.signatureHelp(request.ID, request.Params)
 	case "textDocument/formatting":
 		return false, s.formatting(request.ID, request.Params)
+	case "textDocument/rangeFormatting":
+		return false, s.rangeFormatting(request.ID, request.Params)
+	case "textDocument/onTypeFormatting":
+		return false, s.onTypeFormatting(request.ID, request.Params)
 	default:
 		if len(request.ID) == 0 || bytes.Equal(request.ID, []byte("null")) {
 			return false, nil

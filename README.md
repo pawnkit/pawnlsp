@@ -20,7 +20,8 @@ The server provides:
 - completion, signature help, and semantic highlighting
 - document and workspace symbols, definitions, hover, references, and rename
 - document highlights, folding, and structural selection
-- whole-document formatting through pawnfmt
+- whole-document, range, and format-on-type formatting through pawnfmt
+- parameter-name inlay hints
 - Pawn project and `pawnlint.toml` discovery
 
 The editor must send `file://` document URIs.

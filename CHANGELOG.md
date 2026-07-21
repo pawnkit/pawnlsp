@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.6.0 - 2026-07-21
+
+### Added
+
+- Added range formatting and format-on-type through pawnfmt.
+- Added parameter-name inlay hints for local and API calls.
+
 ## 0.5.0 - 2026-07-21
 
 ### Added

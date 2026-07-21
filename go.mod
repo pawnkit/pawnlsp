@@ -7,7 +7,7 @@ require (
 	github.com/pawnkit/pawn-api v0.1.0
 	github.com/pawnkit/pawn-parser v1.1.0
 	github.com/pawnkit/pawn-project v0.1.0
-	github.com/pawnkit/pawnfmt v1.2.1
+	github.com/pawnkit/pawnfmt v1.3.0
 	github.com/pawnkit/pawnkit-core v0.1.0
 	github.com/pawnkit/pawnlint v1.0.3
 )
