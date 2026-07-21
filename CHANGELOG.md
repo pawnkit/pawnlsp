@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.5.0 - 2026-07-21
+
+### Added
+
+- Added document highlights for declarations and references.
+- Added syntax-aware folding and selection ranges.
+
 ## 0.4.1 - 2026-07-21
 
 ### Fixed

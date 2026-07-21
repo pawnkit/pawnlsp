@@ -268,13 +268,16 @@ func (s *server) handle(request message) (bool, error) {
 				"textDocumentSync": 1, "codeActionProvider": true,
 				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
 				"documentSymbolProvider": true, "definitionProvider": true,
-				"hoverProvider": true, "referencesProvider": true,
+				"documentHighlightProvider": true,
+				"foldingRangeProvider":      true,
+				"hoverProvider":             true, "referencesProvider": true,
 				"renameProvider": map[string]any{"prepareProvider": true},
 				"semanticTokensProvider": map[string]any{
 					"legend": map[string]any{"tokenTypes": semanticTokenTypes, "tokenModifiers": semanticTokenModifiers},
 					"full":   true,
 				},
 				"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}, "retriggerCharacters": []string{","}},
+				"selectionRangeProvider":     true,
 				"workspaceSymbolProvider":    true,
 				"documentFormattingProvider": true,
 			},
@@ -309,8 +312,12 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.completion(request.ID, request.Params)
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
+	case "textDocument/documentHighlight":
+		return false, s.documentHighlights(request.ID, request.Params)
 	case "textDocument/definition":
 		return false, s.definition(request.ID, request.Params)
+	case "textDocument/foldingRange":
+		return false, s.foldingRanges(request.ID, request.Params)
 	case "textDocument/hover":
 		return false, s.hover(request.ID, request.Params)
 	case "textDocument/references":
@@ -321,6 +328,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.rename(request.ID, request.Params)
 	case "textDocument/semanticTokens/full":
 		return false, s.semanticTokens(request.ID, request.Params)
+	case "textDocument/selectionRange":
+		return false, s.selectionRanges(request.ID, request.Params)
 	case "textDocument/signatureHelp":
 		return false, s.signatureHelp(request.ID, request.Params)
 	case "textDocument/formatting":
