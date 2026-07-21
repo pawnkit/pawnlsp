@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.7.0 - 2026-07-21
+
+### Added
+
+- Added pull diagnostics for open documents and indexed workspace files.
+- Added source comments to local hover and completion details.
+- Added include, constraint, callback, and return details to API documentation.
+
 ## 0.6.0 - 2026-07-21
 
 ### Added

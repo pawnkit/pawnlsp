@@ -49,10 +49,14 @@ func completionItems(doc *document, prefix string) []map[string]any {
 	if doc != nil && doc.Analysis != nil {
 		if table := navigationTable(doc.Analysis); table != nil {
 			for _, item := range table.Symbols {
-				add(item.Name, map[string]any{
+				candidate := map[string]any{
 					"kind":   completionSymbolKind(item.Kind),
 					"detail": symbolSummary(item),
-				})
+				}
+				if documentation := localDocumentation(doc.Analysis, item); documentation != "" {
+					candidate["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
+				}
+				add(item.Name, candidate)
 			}
 		}
 		if doc.Analysis.Preprocess != nil {
@@ -123,9 +127,21 @@ func completionAPIKind(kind pawnapi.Kind) int {
 }
 
 func apiDocumentation(entry pawnapi.Entry) string {
-	parts := make([]string, 0, 2)
+	parts := make([]string, 0, 5)
 	if entry.DocumentationSummary != "" {
 		parts = append(parts, entry.DocumentationSummary)
+	}
+	if entry.OwningInclude != "" {
+		parts = append(parts, "Include: `"+entry.OwningInclude+"`")
+	}
+	if entry.CallbackContext != "" {
+		parts = append(parts, entry.CallbackContext)
+	}
+	if len(entry.Constraints) > 0 {
+		parts = append(parts, "**Notes**\n\n- "+strings.Join(entry.Constraints, "\n- "))
+	}
+	if entry.Signature != nil && entry.Signature.ReturnSemantics != "" {
+		parts = append(parts, "**Returns:** "+entry.Signature.ReturnSemantics)
 	}
 	if entry.DocumentationURL != "" {
 		parts = append(parts, "[Read the documentation]("+entry.DocumentationURL+")")

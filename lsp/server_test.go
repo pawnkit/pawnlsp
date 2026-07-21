@@ -124,6 +124,33 @@ func TestServerPublishesSharedAnalysisDiagnostics(t *testing.T) {
 	}
 }
 
+func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
+	root := t.TempDir()
+	mainPath := filepath.Join(root, "main.pwn")
+	brokenPath := filepath.Join(root, "broken.pwn")
+	if err := os.WriteFile(brokenPath, []byte("stock Value;\nstock Value;\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri := coresource.FileURI(mainPath).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main() {}\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"diagnosticProvider", "workspaceDiagnostics", coresource.FileURI(brokenPath).String(), "pawn-analysis:symbol/redeclared"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("workspace diagnostics missing %q: %s", value, output.String())
+		}
+	}
+}
+
 func TestServerReturnsSharedDocumentSymbols(t *testing.T) {
 	uri := tempDocumentURI(t)
 	var input bytes.Buffer

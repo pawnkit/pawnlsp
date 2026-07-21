@@ -7,6 +7,7 @@ import (
 
 	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
+	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
 func TestServerReturnsCompletionItems(t *testing.T) {
@@ -56,6 +57,55 @@ func TestCompletionIncludesLocalSymbolsAndMacros(t *testing.T) {
 	for _, value := range []string{`"label":"Helper"`, `"label":"PROJECT_NAME"`} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("completion output missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestCompletionIncludesLocalDocumentation(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "// Adds two values.\nstock Add(left, right) { return left + right; }\nmain() { Ad }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 2, "character": 11},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"value":"Adds two values."`) {
+		t.Fatalf("completion documentation missing: %s", output.String())
+	}
+}
+
+func TestDeclarationDocumentation(t *testing.T) {
+	t.Parallel()
+
+	text := []byte("/**\n * Adds two values.\n */\nstock Add(left, right);\n")
+	start := bytes.Index(text, []byte("stock Add")) + len("stock ")
+	got := declarationDocumentation(text, coresource.Span{Start: coresource.Offset(start), End: coresource.Offset(start + 3)})
+	if got != "Adds two values." {
+		t.Fatalf("documentation = %q", got)
+	}
+}
+
+func TestAPIDocumentationIncludesUsageDetails(t *testing.T) {
+	t.Parallel()
+
+	got := apiDocumentation(pawnapi.Entry{
+		DocumentationSummary: "Changes the player's score.",
+		OwningInclude:        "a_samp",
+		Constraints:          []string{"The player must be connected."},
+		Signature:            &pawnapi.Signature{ReturnSemantics: "True when the score was changed."},
+	})
+	for _, want := range []string{"Changes the player's score.", "Include: `a_samp`", "The player must be connected.", "**Returns:** True"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("API documentation missing %q: %s", want, got)
 		}
 	}
 }

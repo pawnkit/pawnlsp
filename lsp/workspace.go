@@ -287,9 +287,13 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 					continue
 				}
 				seen[candidate.Name] = true
-				items = append(items, map[string]any{
+				item := map[string]any{
 					"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
-				})
+				}
+				if documentation := localDocumentation(result, candidate); documentation != "" {
+					item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
+				}
+				items = append(items, item)
 			}
 		}
 	}

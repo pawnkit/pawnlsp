@@ -266,6 +266,7 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
 				"textDocumentSync": 1, "codeActionProvider": true,
+				"diagnosticProvider":     map[string]any{"interFileDependencies": true, "workspaceDiagnostics": true},
 				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
 				"documentSymbolProvider": true, "definitionProvider": true,
 				"documentHighlightProvider": true,
@@ -309,12 +310,16 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.didChangeConfiguration(request.Params)
 	case "workspace/symbol":
 		return false, s.workspaceSymbols(request.ID, request.Params)
+	case "workspace/diagnostic":
+		return false, s.workspaceDiagnostics(request.ID)
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
 	case "textDocument/completion":
 		return false, s.completion(request.ID, request.Params)
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
+	case "textDocument/diagnostic":
+		return false, s.documentDiagnostics(request.ID, request.Params)
 	case "textDocument/documentHighlight":
 		return false, s.documentHighlights(request.ID, request.Params)
 	case "textDocument/definition":
@@ -542,33 +547,8 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
-	items := make([]lspDiagnostic, 0, len(diagnostics)+len(shared.Diagnostics))
-	for _, finding := range diagnostics {
-		items = append(items, lspDiagnostic{
-			Range:    diagnosticRange(doc.Text, finding),
-			Severity: lspSeverity(finding.Severity),
-			Code:     finding.RuleID,
-			Source:   "pawnlint",
-			Message:  finding.Message,
-		})
-	}
 	doc.Analysis = shared
-	for _, finding := range shared.Diagnostics {
-		if finding.Primary.File != shared.File {
-			continue
-		}
-		if finding.Code == "pawn-analysis:symbol/redeclared" && macroInvocationAt(shared, int(finding.Primary.Start), int(finding.Primary.End)) {
-			continue
-		}
-		items = append(items, lspDiagnostic{
-			Range:    offsetRange(doc.Text, int(finding.Primary.Start), int(finding.Primary.End)),
-			Severity: coreLSPSeverity(finding.Severity),
-			Code:     finding.Code,
-			Source:   finding.Source,
-			Message:  finding.Message,
-		})
-	}
-	items = dedupeDiagnostics(items)
+	items := documentDiagnosticItems(doc)
 	if ctx.Err() != nil || s.document(doc.URI) != doc {
 		return ctx.Err()
 	}
@@ -764,8 +744,12 @@ func (s *server) hover(id, raw json.RawMessage) error {
 	if workspaceDeclarationCount(occurrences) == 1 {
 		for _, occurrence := range occurrences {
 			if occurrence.declaration {
+				contents := "```pawn\n" + declarationText(occurrence.text, occurrence.span) + "\n```"
+				if documentation := declarationDocumentation(occurrence.text, occurrence.span); documentation != "" {
+					contents += "\n\n" + documentation
+				}
 				return s.respond(id, map[string]any{
-					"contents": map[string]any{"kind": "markdown", "value": "```pawn\n" + declarationText(occurrence.text, occurrence.span) + "\n```"},
+					"contents": map[string]any{"kind": "markdown", "value": contents},
 					"range":    offsetRange(doc.Text, start, end),
 				})
 			}
@@ -861,9 +845,74 @@ func hoverText(doc *document, item symbol.Symbol) string {
 		}
 	}
 	if declaration := localDeclaration(doc.Analysis, item); declaration != "" {
-		return "```pawn\n" + declaration + "\n```"
+		parts := []string{"```pawn\n" + declaration + "\n```"}
+		if documentation := localDocumentation(doc.Analysis, item); documentation != "" {
+			parts = append(parts, documentation)
+		}
+		return strings.Join(parts, "\n\n")
 	}
 	return "```pawn\n" + symbolSummary(item) + "\n```"
+}
+
+func localDocumentation(result *analysis.Result, item symbol.Symbol) string {
+	if result == nil || result.Registry == nil || result.Preprocess == nil {
+		return ""
+	}
+	uri, ok := result.Registry.URI(item.Span.File)
+	if !ok {
+		return ""
+	}
+	for _, file := range result.Preprocess.Files {
+		if file.URI == uri.String() {
+			return declarationDocumentation(file.Content, item.Span)
+		}
+	}
+	return ""
+}
+
+func declarationDocumentation(text []byte, span coresource.Span) string {
+	start := int(span.Start)
+	if start <= 0 || start > len(text) {
+		return ""
+	}
+	lineStart := bytes.LastIndexByte(text[:start], '\n') + 1
+	lines := strings.Split(string(text[:lineStart]), "\n")
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) == "" {
+		return ""
+	}
+
+	last := strings.TrimSpace(lines[len(lines)-1])
+	if strings.HasPrefix(last, "//") {
+		first := len(lines) - 1
+		for first > 0 && strings.HasPrefix(strings.TrimSpace(lines[first-1]), "//") {
+			first--
+		}
+		parts := make([]string, 0, len(lines)-first)
+		for _, line := range lines[first:] {
+			parts = append(parts, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "//")))
+		}
+		return strings.TrimSpace(strings.Join(parts, "\n"))
+	}
+	if !strings.HasSuffix(last, "*/") {
+		return ""
+	}
+	first := len(lines) - 1
+	for first > 0 && !strings.Contains(lines[first], "/*") {
+		first--
+	}
+	if !strings.Contains(lines[first], "/*") {
+		return ""
+	}
+	comment := strings.Join(lines[first:], "\n")
+	comment = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(comment), "/*"), "*/"))
+	parts := strings.Split(comment, "\n")
+	for index, line := range parts {
+		parts[index] = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "*"))
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
 }
 
 func localDeclaration(result *analysis.Result, item symbol.Symbol) string {
@@ -901,9 +950,6 @@ func declarationText(text []byte, span coresource.Span) string {
 
 func apiHover(entry pawnapi.Entry) string {
 	parts := []string{"```pawn\n" + apiDeclaration(entry) + "\n```"}
-	if entry.DocumentationSummary != "" {
-		parts = append(parts, entry.DocumentationSummary)
-	}
 	if entry.Deprecated != nil {
 		note := "Deprecated since " + entry.Deprecated.Since + "."
 		if entry.Deprecated.Reason != "" {
@@ -918,11 +964,8 @@ func apiHover(entry pawnapi.Entry) string {
 		}
 		parts = append(parts, "> **Deprecated:** "+note)
 	}
-	if entry.Signature != nil && entry.Signature.ReturnSemantics != "" {
-		parts = append(parts, "**Returns:** "+entry.Signature.ReturnSemantics)
-	}
-	if entry.DocumentationURL != "" {
-		parts = append(parts, "[Read the documentation]("+entry.DocumentationURL+")")
+	if documentation := apiDocumentation(entry); documentation != "" {
+		parts = append(parts, documentation)
 	}
 	return strings.Join(parts, "\n\n")
 }

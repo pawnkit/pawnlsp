@@ -15,9 +15,9 @@ over standard input and output.
 
 The server provides:
 
-- diagnostics on open and change
+- diagnostics for open documents and indexed project files
 - safe quick fixes
-- completion, signature help, and semantic highlighting
+- documented completion, hover, signature help, and semantic highlighting
 - document and workspace symbols, definitions, hover, references, and rename
 - document highlights, folding, and structural selection
 - whole-document, range, and format-on-type formatting through pawnfmt
