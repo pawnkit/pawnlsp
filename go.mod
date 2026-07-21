@@ -3,13 +3,13 @@ module github.com/pawnkit/pawnlsp
 go 1.26.5
 
 require (
-	github.com/pawnkit/pawn-analysis v0.1.3
+	github.com/pawnkit/pawn-analysis v0.1.4
 	github.com/pawnkit/pawn-api v0.1.0
 	github.com/pawnkit/pawn-parser v1.1.4
 	github.com/pawnkit/pawn-project v0.1.0
 	github.com/pawnkit/pawnfmt v1.3.0
 	github.com/pawnkit/pawnkit-core v0.1.0
-	github.com/pawnkit/pawnlint v1.0.4
+	github.com/pawnkit/pawnlint v1.0.5
 )
 
 require (

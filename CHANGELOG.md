@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.3 - 2026-07-21
+
+### Fixed
+
+- Updated analysis and linting for concise returns, macro-defined tags, and nested quoted includes.
+
 ## 0.9.2 - 2026-07-21
 
 ### Fixed
