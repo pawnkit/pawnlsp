@@ -197,14 +197,25 @@ func TestServerReturnsIncludeDefinition(t *testing.T) {
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/definition", "params": map[string]any{
 		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 17},
 	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/definition", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 12},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 12},
+	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 	var output bytes.Buffer
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
 	want := coresource.FileURI(include).String()
-	if !strings.Contains(output.String(), want) {
+	if count := strings.Count(output.String(), want); count < 2 {
 		t.Fatalf("include definition URI %q missing: %s", want, output.String())
+	}
+	for _, value := range []string{"```pawn", "helper", "Resolved file:"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("include hover missing %q: %s", value, output.String())
+		}
 	}
 }
 

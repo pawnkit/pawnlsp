@@ -634,6 +634,15 @@ func (s *server) definition(id, raw json.RawMessage) error {
 		return s.respond(id, nil)
 	}
 	table := navigationTable(doc.Analysis)
+	if include, ok := includeAt(doc.Analysis, int(offset)); ok {
+		if !include.Resolved || include.ResolvedURI == "" {
+			return s.respond(id, nil)
+		}
+		return s.respond(id, map[string]any{
+			"uri":   include.ResolvedURI,
+			"range": offsetRange(nil, 0, 0),
+		})
+	}
 	for _, ref := range table.References {
 		if ref.Resolved == 0 || !ref.Span.Contains(offset) {
 			continue
@@ -662,6 +671,13 @@ func (s *server) hover(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, nil)
 	}
+	if include, ok := includeAt(doc.Analysis, int(offset)); ok {
+		start, end := includePathRange(doc.Text, include)
+		return s.respond(id, map[string]any{
+			"contents": map[string]any{"kind": "markdown", "value": includeHover(include)},
+			"range":    offsetRange(doc.Text, start, end),
+		})
+	}
 	item, ok := symbolAt(navigationTable(doc.Analysis), offset)
 	if ok {
 		return s.respond(id, map[string]any{
@@ -678,6 +694,46 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		"contents": map[string]any{"kind": "markdown", "value": apiHover(entry)},
 		"range":    offsetRange(doc.Text, start, end),
 	})
+}
+
+func includeAt(result *analysis.Result, offset int) (preprocess.Include, bool) {
+	if result == nil || result.Preprocess == nil {
+		return preprocess.Include{}, false
+	}
+	for _, include := range result.Preprocess.Includes {
+		if include.File == 0 && offset >= include.DirectiveSpan.Start && offset < include.DirectiveSpan.End {
+			return include, true
+		}
+	}
+	return preprocess.Include{}, false
+}
+
+func includePathRange(text []byte, include preprocess.Include) (int, int) {
+	start, end := include.DirectiveSpan.Start, include.DirectiveSpan.End
+	if start < 0 || end > len(text) || start >= end {
+		return start, end
+	}
+	if path := bytes.Index(text[start:end], []byte(include.Path)); path >= 0 {
+		start += path
+		return start, start + len(include.Path)
+	}
+	return start, end
+}
+
+func includeHover(include preprocess.Include) string {
+	opening, closing := "<", ">"
+	if !include.Angle {
+		opening, closing = `"`, `"`
+	}
+	text := "```pawn\n#include " + opening + include.Path + closing + "\n```"
+	if !include.Resolved || include.ResolvedURI == "" {
+		return text + "\n\nInclude not found."
+	}
+	path := include.ResolvedURI
+	if filename, err := coresource.URI(include.ResolvedURI).Filename(); err == nil {
+		path = filename
+	}
+	return text + "\n\nResolved file: `" + path + "`"
 }
 
 func identifierAt(text []byte, offset int) (string, int, int) {

@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.2.1 - 2026-07-21
+
+### Fixed
+
+- Opened resolved include files from definitions and showed the resolved path on hover.
+
 ## 0.2.0 - 2026-07-21
 
 ### Added
