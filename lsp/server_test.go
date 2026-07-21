@@ -359,6 +359,54 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	}
 }
 
+func TestServerResolvesNestedQuotedIncludesAndSparseMacroLabels(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "gamemodes", "gamemode.pwn")
+	module := filepath.Join(root, "gamemodes", "modules", "player", "main.pwn")
+	joining := filepath.Join(root, "gamemodes", "modules", "player", "joining.pwn")
+	admin := filepath.Join(root, "gamemodes", "modules", "player", "admin.pwn")
+	for _, path := range []string{entry, module, joining, admin} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"gamemodes/gamemode.pwn","preset":"openmp"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("#include \"modules/player/main.pwn\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{joining, admin} {
+		if err := os.WriteFile(path, []byte(""), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	text := "#include \"modules/player/joining.pwn\"\n" +
+		"#include \"modules/player/admin.pwn\"\n" +
+		"#define PICK(%1) (%1)\n" +
+		"main() { return PICK(3); }\n"
+
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(module).String(), "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(module).String()},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"include-not-found", "missing-include", "macro-argument-mismatch"} {
+		if strings.Contains(output.String(), code) {
+			t.Fatalf("unexpected %s diagnostic: %s", code, output.String())
+		}
+	}
+}
+
 func TestServerReturnsSharedHover(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "stock Float:Measure(value, scale = 1) { return value; }\nmain() { return Measure(2); }"

@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.9.4 - 2026-07-21
+
+### Fixed
+
+- Resolved quoted includes from the gamemode entry directory.
+- Accepted macro parameter labels that do not start at `%0`.
+
 ## 0.9.3 - 2026-07-21
 
 ### Fixed

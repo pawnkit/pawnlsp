@@ -107,7 +107,11 @@ func loadProjectContext(path string, extraRoots ...string) (preprocess.IncludeRe
 	}
 	roots := append([]string{}, project.Paths().IncludeRoots...)
 	roots = append(roots, extraRoots...)
-	resolver := projectinclude.New(fsys, roots)
+	var quotedRoots []string
+	if project.Paths().Entry != "" {
+		quotedRoots = append(quotedRoots, filepath.Dir(project.Paths().Entry))
+	}
+	resolver := projectinclude.NewWithQuotedRoots(fsys, roots, quotedRoots)
 	return projectIncludeResolver{resolver: resolver, fsys: fsys}, project.Selection().ProfileID, project.Root()
 }
 
