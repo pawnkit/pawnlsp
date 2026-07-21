@@ -2,6 +2,17 @@
 
 Notable changes are recorded here.
 
+## 0.2.0 - 2026-07-21
+
+### Added
+
+- Added exact local declarations to hover details.
+- Added API signatures, return notes, deprecation details, and documentation links to hover details.
+
+### Changed
+
+- Reloaded managed include paths through LSP configuration updates.
+
 ## 0.1.4 - 2026-07-21
 
 ### Fixed

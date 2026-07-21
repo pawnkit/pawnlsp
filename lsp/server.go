@@ -283,6 +283,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.didClose(request.Params)
 	case "workspace/didChangeWatchedFiles":
 		return false, s.reloadProjects()
+	case "workspace/didChangeConfiguration":
+		return false, s.didChangeConfiguration(request.Params)
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
 	case "textDocument/documentSymbol":
@@ -301,6 +303,25 @@ func (s *server) handle(request message) (bool, error) {
 		}
 		return false, s.respondError(request.ID, -32601, "method not found")
 	}
+}
+
+func (s *server) didChangeConfiguration(raw json.RawMessage) error {
+	var params struct {
+		Settings struct {
+			Pawn struct {
+				IncludePaths []string `json:"includePaths"`
+			} `json:"pawn"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return err
+	}
+	roots := cleanIncludeRoots(params.Settings.Pawn.IncludePaths)
+	if slices.Equal(roots, s.includeRoots) {
+		return nil
+	}
+	s.includeRoots = roots
+	return s.reloadProjects()
 }
 
 func (s *server) didOpen(raw json.RawMessage) error {
@@ -642,13 +663,168 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		return s.respond(id, nil)
 	}
 	item, ok := symbolAt(navigationTable(doc.Analysis), offset)
+	if ok {
+		return s.respond(id, map[string]any{
+			"contents": map[string]any{"kind": "markdown", "value": hoverText(doc, item)},
+			"range":    offsetRange(doc.Text, int(item.Span.Start), int(item.Span.End)),
+		})
+	}
+	name, start, end := identifierAt(doc.Text, int(offset))
+	entry, ok := apiEntry(doc.Names, name)
 	if !ok {
 		return s.respond(id, nil)
 	}
 	return s.respond(id, map[string]any{
-		"contents": map[string]any{"kind": "plaintext", "value": symbolSummary(item)},
-		"range":    offsetRange(doc.Text, int(item.Span.Start), int(item.Span.End)),
+		"contents": map[string]any{"kind": "markdown", "value": apiHover(entry)},
+		"range":    offsetRange(doc.Text, start, end),
 	})
+}
+
+func identifierAt(text []byte, offset int) (string, int, int) {
+	if offset < 0 || offset > len(text) {
+		return "", 0, 0
+	}
+	start, end := offset, offset
+	for start > 0 && identifierByte(text[start-1]) {
+		start--
+	}
+	for end < len(text) && identifierByte(text[end]) {
+		end++
+	}
+	return string(text[start:end]), start, end
+}
+
+func identifierByte(value byte) bool {
+	return value == '_' || value == '@' || value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9'
+}
+
+func apiEntry(names sema.Resolver, name string) (pawnapi.Entry, bool) {
+	resolver, ok := names.(apiNameResolver)
+	if !ok || resolver.index == nil || name == "" {
+		return pawnapi.Entry{}, false
+	}
+	for _, entry := range resolver.index.ByName(name) {
+		if resolver.available(entry) {
+			return entry, true
+		}
+	}
+	return pawnapi.Entry{}, false
+}
+
+func hoverText(doc *document, item symbol.Symbol) string {
+	if resolver, ok := doc.Names.(apiNameResolver); ok && resolver.index != nil {
+		for _, entry := range resolver.index.ByName(item.Name) {
+			if resolver.available(entry) {
+				return apiHover(entry)
+			}
+		}
+	}
+	if declaration := localDeclaration(doc.Analysis, item); declaration != "" {
+		return "```pawn\n" + declaration + "\n```"
+	}
+	return "```pawn\n" + symbolSummary(item) + "\n```"
+}
+
+func localDeclaration(result *analysis.Result, item symbol.Symbol) string {
+	if result == nil || result.Registry == nil || result.Preprocess == nil {
+		return ""
+	}
+	uri, ok := result.Registry.URI(item.Span.File)
+	if !ok {
+		return ""
+	}
+	for _, file := range result.Preprocess.Files {
+		if file.URI != uri.String() {
+			continue
+		}
+		start := int(item.Span.Start)
+		if start < 0 || start >= len(file.Content) {
+			return ""
+		}
+		for start > 0 && file.Content[start-1] != '\n' {
+			start--
+		}
+		end := int(item.Span.End)
+		limit := min(len(file.Content), end+512)
+		for end < limit && file.Content[end] != '{' && file.Content[end] != ';' {
+			end++
+		}
+		return strings.Join(strings.Fields(string(file.Content[start:end])), " ")
+	}
+	return ""
+}
+
+func apiHover(entry pawnapi.Entry) string {
+	parts := []string{"```pawn\n" + apiDeclaration(entry) + "\n```"}
+	if entry.DocumentationSummary != "" {
+		parts = append(parts, entry.DocumentationSummary)
+	}
+	if entry.Deprecated != nil {
+		note := "Deprecated since " + entry.Deprecated.Since + "."
+		if entry.Deprecated.Reason != "" {
+			note += " " + entry.Deprecated.Reason
+		}
+		if entry.Deprecated.Replacement != "" {
+			replacement := entry.Deprecated.Replacement
+			if _, name, ok := strings.Cut(replacement, ":"); ok {
+				replacement = name
+			}
+			note += " Use `" + replacement + "` instead."
+		}
+		parts = append(parts, "> **Deprecated:** "+note)
+	}
+	if entry.Signature != nil && entry.Signature.ReturnSemantics != "" {
+		parts = append(parts, "**Returns:** "+entry.Signature.ReturnSemantics)
+	}
+	if entry.DocumentationURL != "" {
+		parts = append(parts, "[Read the documentation]("+entry.DocumentationURL+")")
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+func apiDeclaration(entry pawnapi.Entry) string {
+	if entry.Signature == nil {
+		if entry.Value != nil {
+			return fmt.Sprintf("%s %s = %s", entry.Kind, entry.Name, entry.Value.String())
+		}
+		return string(entry.Kind) + " " + entry.Name
+	}
+	parameters := make([]string, 0, len(entry.Signature.Parameters))
+	for _, parameter := range entry.Signature.Parameters {
+		value := parameter.Name
+		if parameter.Tag != "" {
+			value = parameter.Tag + ":" + value
+		}
+		if parameter.Reference {
+			value = "&" + value
+		}
+		var dimensions strings.Builder
+		for _, size := range parameter.ArrayDimensions {
+			if size > 0 {
+				dimensions.WriteString("[")
+				dimensions.WriteString(strconv.Itoa(size))
+				dimensions.WriteString("]")
+			} else {
+				dimensions.WriteString("[]")
+			}
+		}
+		value += dimensions.String()
+		if parameter.Variadic {
+			value += "..."
+		}
+		if parameter.Default != nil {
+			value += " = " + parameter.Default.String()
+		}
+		if parameter.Const {
+			value = "const " + value
+		}
+		parameters = append(parameters, value)
+	}
+	name := entry.Name
+	if entry.Signature.ReturnTag != "" {
+		name = entry.Signature.ReturnTag + ":" + name
+	}
+	return fmt.Sprintf("%s %s(%s)", entry.Kind, name, strings.Join(parameters, ", "))
 }
 
 func documentOffset(doc *document, pos position) (coresource.Offset, bool) {

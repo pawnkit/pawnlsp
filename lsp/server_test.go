@@ -275,7 +275,58 @@ func TestServerReturnsSharedHover(t *testing.T) {
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"hoverProvider", "stock Float:Measure (1..2 arguments)"} {
+	for _, value := range []string{"hoverProvider", "```pawn\\nstock Float:Measure(value, scale = 1)\\n```"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestAPIHoverIncludesSignatureAndDocumentation(t *testing.T) {
+	entry := pawnapi.Entry{
+		Kind: pawnapi.KindNative,
+		Name: "SetPlayerScore",
+		Signature: &pawnapi.Signature{
+			Parameters: []pawnapi.Parameter{{Name: "playerid"}, {Name: "score"}},
+			ReturnTag:  "bool", ReturnSemantics: "True when the score was updated.",
+		},
+		DocumentationSummary: "Sets a player's score.",
+		DocumentationURL:     "https://open.mp/docs/scripting/functions/SetPlayerScore",
+	}
+	hover := apiHover(entry)
+	for _, value := range []string{
+		"native bool:SetPlayerScore(playerid, score)",
+		"Sets a player's score.",
+		"**Returns:** True when the score was updated.",
+		"[Read the documentation](https://open.mp/docs/scripting/functions/SetPlayerScore)",
+	} {
+		if !strings.Contains(hover, value) {
+			t.Fatalf("hover missing %q: %s", value, hover)
+		}
+	}
+}
+
+func TestServerReturnsAPIHover(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "main() { SetPlayerPos(0, 1.0, 2.0, 3.0); }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 12},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{
+		"native bool:SetPlayerPos(playerid, Float:x, Float:y, Float:z)",
+		"https://open.mp/docs/scripting/functions/SetPlayerPos",
+	} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("missing %q: %s", value, output.String())
 		}
