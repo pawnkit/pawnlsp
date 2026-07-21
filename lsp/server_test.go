@@ -229,11 +229,11 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	if err := os.WriteFile(projectInclude, []byte("stock Add(a, b) { return a + b; }\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(extraInclude, []byte("stock Assert(value) { return value; }\n"), 0o600); err != nil {
+	if err := os.WriteFile(extraInclude, []byte("#define TEST(%0) forward test_%0(); public test_%0()\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	text := "#include <math>\n#include <pawntest>\nmain() { Assert(Add(20, 22) == 42); }\n"
+	text := "#include <math>\n#include <pawntest>\nTEST(one) { return Add(20, 22); }\nTEST(two) { return Add(2, 3); }\n"
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
 		"initializationOptions": map[string]any{"includePaths": []string{extraRoot}},
@@ -252,6 +252,9 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "include-not-found") || strings.Contains(output.String(), "missing-include") {
 		t.Fatalf("resolved include reported missing: %s", output.String())
+	}
+	if strings.Contains(output.String(), "duplicate-function-definition") || strings.Contains(output.String(), "symbol/redeclared") {
+		t.Fatalf("macro invocation reported as a duplicate: %s", output.String())
 	}
 }
 

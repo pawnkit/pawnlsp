@@ -462,7 +462,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	if analysisErr != nil {
 		return analysisErr
 	}
-	diagnostics = reconcileIncludeDiagnostics(diagnostics, shared)
+	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
 	items := make([]lspDiagnostic, 0, len(diagnostics)+len(shared.Diagnostics))
 	for _, finding := range diagnostics {
@@ -477,6 +477,9 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	doc.Analysis = shared
 	for _, finding := range shared.Diagnostics {
 		if finding.Primary.File != shared.File {
+			continue
+		}
+		if finding.Code == "pawn-analysis:symbol/redeclared" && macroInvocationAt(shared, int(finding.Primary.Start), int(finding.Primary.End)) {
 			continue
 		}
 		items = append(items, lspDiagnostic{
@@ -494,7 +497,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	return s.notify("textDocument/publishDiagnostics", map[string]any{"uri": doc.URI, "version": doc.Version, "diagnostics": items})
 }
 
-func reconcileIncludeDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result) []diagnostic.Diagnostic {
+func reconcileDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result) []diagnostic.Diagnostic {
 	missing := make(map[[2]int]bool)
 	for _, item := range shared.Diagnostics {
 		if item.Code == string(preprocess.CodeIncludeNotFound) && item.Primary.File == shared.File {
@@ -504,11 +507,28 @@ func reconcileIncludeDiagnostics(items []diagnostic.Diagnostic, shared *analysis
 	result := items[:0]
 	for _, item := range items {
 		key := [2]int{item.Range.Start.Offset, item.Range.End.Offset}
-		if item.RuleID != "missing-include" || missing[key] {
+		resolvedInclude := item.RuleID == "missing-include" && !missing[key]
+		macroDeclaration := item.RuleID == "duplicate-function-definition" && macroInvocationAt(shared, key[0], key[1])
+		if !resolvedInclude && !macroDeclaration {
 			result = append(result, item)
 		}
 	}
 	return result
+}
+
+func macroInvocationAt(result *analysis.Result, start, end int) bool {
+	if result == nil || result.Preprocess == nil {
+		return false
+	}
+	for _, item := range result.Preprocess.ExpandedTokens {
+		for origin := item.Origin; origin != nil; origin = origin.Parent {
+			span := origin.Span
+			if origin.Macro != "" && span.File == 0 && start >= span.Start.Offset && end <= span.End.Offset {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *server) cancelDocuments() {
