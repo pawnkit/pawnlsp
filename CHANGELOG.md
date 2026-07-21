@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.9.2 - 2026-07-21
+
+### Fixed
+
+- Accepted PawnPlus generic tags, declaration macros, and conditional `else if` splices.
+- Respected active `#endinput` guards when reporting duplicate declarations.
+
 ## 0.9.1 - 2026-07-21
 
 ### Fixed
