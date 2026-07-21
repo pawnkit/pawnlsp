@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.4.1 - 2026-07-21
+
+### Fixed
+
+- Released workspace indexing cancellation resources after each indexing run.
+
 ## 0.4.0 - 2026-07-21
 
 ### Added

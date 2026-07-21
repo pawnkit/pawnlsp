@@ -67,6 +67,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 	s.mu.Unlock()
 
 	s.workers.Go(func() {
+		defer cancel()
 		defer close(index.ready)
 		if delay > 0 {
 			timer := time.NewTimer(delay)
