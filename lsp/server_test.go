@@ -94,6 +94,26 @@ func TestServerFormatsDocument(t *testing.T) {
 	}
 }
 
+func TestServerFormatsBackslashInclude(t *testing.T) {
+	uri := tempDocumentURI(t)
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "#include <YSI_Server\\y_flooding>\nmain(){return 1;}\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/formatting", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "options": map[string]any{"tabSize": 4, "insertSpaces": false},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "does not parse cleanly") || !strings.Contains(output.String(), `YSI_Server\\y_flooding`) {
+		t.Fatalf("formatting failed: %s", output.String())
+	}
+}
+
 func TestServerPublishesSharedAnalysisDiagnostics(t *testing.T) {
 	tests := []struct {
 		name string
@@ -126,6 +146,30 @@ func TestServerPublishesSharedAnalysisDiagnostics(t *testing.T) {
 				t.Fatalf("shared diagnostic %s count = %d: %s", test.code, count, output.String())
 			}
 		})
+	}
+}
+
+func TestServerOmitsResolvedAnalysisFalsePositives(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "new Iterator:values[10]<20>;\nvoid:Reset() { values[0] = 0; }\n"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"pawn-analysis:sema/missing-return", "pawn-analysis:sema/state-variable-shadow", "pawn-analysis:sema/invalid-state-variable"} {
+		if strings.Contains(output.String(), code) {
+			t.Fatalf("unexpected diagnostic %s: %s", code, output.String())
+		}
 	}
 }
 

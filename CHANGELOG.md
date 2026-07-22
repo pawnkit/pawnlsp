@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.9.9 - 2026-07-22
+
+### Fixed
+
+- Accepted compiler constants and current YSI iterator syntax in diagnostics.
+- Stopped requiring return values from `void:` functions.
+- Formatted include paths that use backslashes.
+
 ## 0.9.8 - 2026-07-21
 
 ### Fixed
