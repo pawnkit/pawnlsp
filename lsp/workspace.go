@@ -69,6 +69,12 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 	s.workers.Go(func() {
 		defer cancel()
 		defer close(index.ready)
+		select {
+		case <-doc.ready:
+		case <-ctx.Done():
+			index.err = ctx.Err()
+			return
+		}
 		if delay > 0 {
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
@@ -107,34 +113,28 @@ func buildWorkspaceIndex(
 	if err != nil {
 		return nil, err
 	}
-	seen := make(map[string]bool, len(paths))
+	selected := paths[:0]
 	for _, path := range paths {
-		seen[path] = true
-	}
-	for path := range open {
-		if !seen[path] && workspaceSourceExtension(filepath.Ext(path)) {
-			paths = append(paths, path)
-			seen[path] = true
+		if _, isOpen := open[path]; !isOpen {
+			selected = append(selected, path)
 		}
 	}
+	paths = selected
 	sort.Strings(paths)
 	snapshot := query.New()
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		text, isOpen := open[path]
-		if !isOpen {
-			text, err = os.ReadFile(path) //nolint:gosec // Paths come from the bounded workspace scan.
-			if err != nil {
-				continue
-			}
+		text, err := os.ReadFile(path) //nolint:gosec // Paths come from the bounded workspace scan.
+		if err != nil {
+			continue
 		}
 		uri := coresource.FileURI(path)
 		snapshot, _ = snapshot.Update(query.Document{URI: uri, Text: text, Version: 1})
 	}
 	workspace, err := snapshot.AnalyzeWorkspace(ctx, analysis.Options{
-		Includes: includes, Names: names, Revision: root,
+		Includes: includes, Names: names, Revision: root, MaxOutputTokens: analysisOutputTokenLimit,
 	})
 	if err != nil {
 		return nil, err
@@ -155,40 +155,38 @@ func (s *server) workspaceSymbols(id, raw json.RawMessage) error {
 		indexes = append(indexes, index)
 	}
 	s.mu.Unlock()
-	for _, index := range indexes {
-		<-index.ready
-	}
 	queryText := strings.ToLower(params.Query)
 	items := make([]map[string]any, 0)
 	seen := make(map[string]bool)
-	for _, index := range indexes {
-		for uri, result := range index.files {
-			if result == nil || result.Symbols == nil {
+	for uri, result := range s.workspaceResults() {
+		if result == nil || result.Symbols == nil {
+			continue
+		}
+		for _, item := range result.Symbols.Symbols {
+			scope, ok := result.Symbols.Scope(item.Scope)
+			if !ok || scope.Kind != symbol.ScopeFile || queryText != "" && !strings.Contains(strings.ToLower(item.Name), queryText) {
 				continue
 			}
-			for _, item := range result.Symbols.Symbols {
-				scope, ok := result.Symbols.Scope(item.Scope)
-				if !ok || scope.Kind != symbol.ScopeFile || queryText != "" && !strings.Contains(strings.ToLower(item.Name), queryText) {
-					continue
-				}
-				key := fmt.Sprintf("%s:%d:%s", uri, item.Span.Start, item.Name)
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				container := uri.String()
-				if path, err := uri.Filename(); err == nil {
-					if relative, err := filepath.Rel(index.root, path); err == nil {
+			key := fmt.Sprintf("%s:%d:%s", uri, item.Span.Start, item.Name)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			container := uri.String()
+			if path, err := uri.Filename(); err == nil {
+				for _, index := range indexes {
+					if relative, err := filepath.Rel(index.root, path); err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 						container = filepath.ToSlash(relative)
+						break
 					}
 				}
-				items = append(items, map[string]any{
-					"name": item.Name, "kind": symbolKind(item.Kind), "containerName": container,
-					"location": map[string]any{
-						"uri": uri.String(), "range": offsetRange(result.Preprocess.Source, int(item.Span.Start), int(item.Span.End)),
-					},
-				})
 			}
+			items = append(items, map[string]any{
+				"name": item.Name, "kind": symbolKind(item.Kind), "containerName": container,
+				"location": map[string]any{
+					"uri": uri.String(), "range": offsetRange(result.Preprocess.Source, int(item.Span.Start), int(item.Span.End)),
+				},
+			})
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -200,54 +198,43 @@ func (s *server) workspaceSymbols(id, raw json.RawMessage) error {
 }
 
 func (s *server) workspaceOccurrences(name string) []workspaceOccurrence {
-	s.mu.Lock()
-	indexes := make([]*workspaceIndex, 0, len(s.workspaces))
-	for _, index := range s.workspaces {
-		indexes = append(indexes, index)
-	}
-	s.mu.Unlock()
-	for _, index := range indexes {
-		<-index.ready
-	}
 	items := make([]workspaceOccurrence, 0)
 	seen := make(map[string]bool)
-	for _, index := range indexes {
-		for uri, result := range index.files {
-			if result == nil || result.Symbols == nil || result.Preprocess == nil {
+	for uri, result := range s.workspaceResults() {
+		if result == nil || result.Symbols == nil || result.Preprocess == nil {
+			continue
+		}
+		add := func(span coresource.Span, declaration bool) {
+			key := fmt.Sprintf("%s:%d:%d", uri, span.Start, span.End)
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+			items = append(items, workspaceOccurrence{
+				uri: uri, text: result.Preprocess.Source, span: span, declaration: declaration,
+			})
+		}
+		for _, item := range result.Symbols.Symbols {
+			scope, ok := result.Symbols.Scope(item.Scope)
+			if ok && scope.Kind == symbol.ScopeFile && item.Name == name {
+				add(item.Span, true)
+			}
+		}
+		for _, reference := range result.Symbols.References {
+			if reference.Name != name {
 				continue
 			}
-			add := func(span coresource.Span, declaration bool) {
-				key := fmt.Sprintf("%s:%d:%d", uri, span.Start, span.End)
-				if seen[key] {
-					return
-				}
-				seen[key] = true
-				items = append(items, workspaceOccurrence{
-					uri: uri, text: result.Preprocess.Source, span: span, declaration: declaration,
-				})
-			}
-			for _, item := range result.Symbols.Symbols {
-				scope, ok := result.Symbols.Scope(item.Scope)
-				if ok && scope.Kind == symbol.ScopeFile && item.Name == name {
-					add(item.Span, true)
-				}
-			}
-			for _, reference := range result.Symbols.References {
-				if reference.Name != name {
+			if reference.Resolved != 0 {
+				item, ok := result.Symbols.Symbol(reference.Resolved)
+				if !ok {
 					continue
 				}
-				if reference.Resolved != 0 {
-					item, ok := result.Symbols.Symbol(reference.Resolved)
-					if !ok {
-						continue
-					}
-					scope, ok := result.Symbols.Scope(item.Scope)
-					if !ok || scope.Kind != symbol.ScopeFile {
-						continue
-					}
+				scope, ok := result.Symbols.Scope(item.Scope)
+				if !ok || scope.Kind != symbol.ScopeFile {
+					continue
 				}
-				add(reference.Span, false)
 			}
+			add(reference.Span, false)
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -266,36 +253,27 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 			seen[label] = true
 		}
 	}
-	s.mu.Lock()
-	indexes := make([]*workspaceIndex, 0, len(s.workspaces))
-	for _, index := range s.workspaces {
-		indexes = append(indexes, index)
-	}
-	s.mu.Unlock()
-	for _, index := range indexes {
-		<-index.ready
-		for _, result := range index.files {
-			if result == nil || result.Symbols == nil {
+	for _, result := range s.workspaceResults() {
+		if result == nil || result.Symbols == nil {
+			continue
+		}
+		for _, candidate := range result.Symbols.Symbols {
+			scope, ok := result.Symbols.Scope(candidate.Scope)
+			if !ok || scope.Kind != symbol.ScopeFile || seen[candidate.Name] {
 				continue
 			}
-			for _, candidate := range result.Symbols.Symbols {
-				scope, ok := result.Symbols.Scope(candidate.Scope)
-				if !ok || scope.Kind != symbol.ScopeFile || seen[candidate.Name] {
-					continue
-				}
-				if prefix != "" && !strings.HasPrefix(strings.ToLower(candidate.Name), strings.ToLower(prefix)) {
-					continue
-				}
-				seen[candidate.Name] = true
-				item := map[string]any{
-					"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
-					"sortText": "2_" + strings.ToLower(candidate.Name),
-				}
-				if documentation := localDocumentation(result, candidate); documentation != "" {
-					item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
-				}
-				items = append(items, item)
+			if prefix != "" && !strings.HasPrefix(strings.ToLower(candidate.Name), strings.ToLower(prefix)) {
+				continue
 			}
+			seen[candidate.Name] = true
+			item := map[string]any{
+				"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
+				"sortText": "2_" + strings.ToLower(candidate.Name),
+			}
+			if documentation := localDocumentation(result, candidate); documentation != "" {
+				item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
+			}
+			items = append(items, item)
 		}
 	}
 	sort.Slice(items, func(i, j int) bool { return completionItemLess(items[i], items[j]) })
@@ -347,7 +325,7 @@ func workspaceSourceFiles(root string) ([]string, error) {
 }
 
 func skipWorkspaceDirectory(name string) bool {
-	return strings.HasPrefix(name, ".") || name == "build" || name == "dependencies" || name == "dist" || name == "node_modules"
+	return strings.HasPrefix(name, ".") || name == "build" || name == "dependencies" || name == "dist" || name == "node_modules" || name == "pawno"
 }
 
 func workspaceSourceExtension(extension string) bool {

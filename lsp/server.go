@@ -71,6 +71,8 @@ type server struct {
 	projectRevision int64
 }
 
+const analysisOutputTokenLimit = 50_000
+
 type apiNameResolver struct {
 	index   *pawnapi.Index
 	profile string
@@ -551,7 +553,8 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
-		Revision: fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
+		MaxOutputTokens: analysisOutputTokenLimit,
+		Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
 	})
 	if analysisErr != nil {
 		return analysisErr

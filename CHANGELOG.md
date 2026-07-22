@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.9.8 - 2026-07-21
+
+### Fixed
+
+- Bounded macro expansion for large projects.
+- Kept `pawno` toolchain files out of indexing and workspace diagnostics.
+- Avoided indexing open files twice.
+
 ## 0.9.7 - 2026-07-21
 
 ### Fixed

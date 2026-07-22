@@ -164,11 +164,21 @@ func (s *server) workspaceResults() map[coresource.URI]*analysis.Result {
 	for _, index := range s.workspaces {
 		indexes = append(indexes, index)
 	}
+	documents := make([]*document, 0, len(s.documents))
+	for _, doc := range s.documents {
+		documents = append(documents, doc)
+	}
 	s.mu.Unlock()
 	results := make(map[coresource.URI]*analysis.Result)
 	for _, index := range indexes {
 		<-index.ready
 		maps.Copy(results, index.files)
+	}
+	for _, doc := range documents {
+		<-doc.ready
+		if doc.Analysis != nil {
+			results[coresource.URI(doc.URI)] = doc.Analysis
+		}
 	}
 	return results
 }

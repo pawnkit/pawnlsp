@@ -91,7 +91,12 @@ func workspaceDiagnosticURI(root string, uri coresource.URI) bool {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false
 	}
-	return relative != "dependencies" && !strings.HasPrefix(relative, "dependencies"+string(filepath.Separator))
+	for _, directory := range []string{"dependencies", "pawno"} {
+		if relative == directory || strings.HasPrefix(relative, directory+string(filepath.Separator)) {
+			return false
+		}
+	}
+	return true
 }
 
 func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]lspDiagnostic {
