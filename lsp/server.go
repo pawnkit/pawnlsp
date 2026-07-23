@@ -113,18 +113,16 @@ func (r projectIncludeResolver) Resolve(fromURI, path string, angle bool) ([]byt
 
 func loadProjectContext(path string, extraRoots ...string) (preprocess.IncludeResolver, string, string) {
 	fsys := fsx.OS{}
-	project, err := projectmodel.Load(coresource.NewRegistry(), fsys, path, projectmodel.Options{})
+	project, err := projectmodel.Load(coresource.NewRegistry(), fsys, path, projectmodel.Options{
+		ManagedIncludeRoots: extraRoots,
+	})
 	if err != nil {
 		return nil, "", filepath.Dir(path)
 	}
-	roots := append([]string{}, project.Paths().IncludeRoots...)
-	roots = append(roots, extraRoots...)
-	var quotedRoots []string
-	if project.Paths().Entry != "" {
-		quotedRoots = append(quotedRoots, filepath.Dir(project.Paths().Entry))
-	}
-	resolver := projectinclude.NewWithQuotedRoots(fsys, roots, quotedRoots)
-	return projectIncludeResolver{resolver: resolver, fsys: fsys}, project.Selection().ProfileID, project.Root()
+	return projectIncludeResolver{
+		resolver: project.IncludeResolver(),
+		fsys:     fsys,
+	}, project.Selection().ProfileID, project.Root()
 }
 
 func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeResolver, string) {

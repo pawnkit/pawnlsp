@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.25.4 - 2026-07-23
+
+### Changed
+
+- Routed editor-managed include paths through `pawn-project`.
+
 ## 0.25.3 - 2026-07-23
 
 ### Fixed
