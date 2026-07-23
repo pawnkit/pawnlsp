@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.23.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for HTTP requests.
+
 ## 0.22.0 - 2026-07-23
 
 ### Added
