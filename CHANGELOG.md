@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.25.0 - 2026-07-23
+
+### Added
+
+- Completed SA-MP and open.mp API data for player, vehicle, text-draw, network, database, and NPC features.
+
 ## 0.24.0 - 2026-07-23
 
 ### Added
