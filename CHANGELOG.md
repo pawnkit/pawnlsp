@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.25.2 - 2026-07-23
+
+### Changed
+
+- Updated to the current formatter and linter releases.
+
 ## 0.25.1 - 2026-07-23
 
 ### Fixed
