@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.13.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for checkpoints.
+
 ## 0.12.0 - 2026-07-23
 
 ### Added

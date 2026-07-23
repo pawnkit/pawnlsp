@@ -163,6 +163,30 @@ func TestServerReturnsActorAPICompletion(t *testing.T) {
 	}
 }
 
+func TestServerReturnsCheckpointAPICompletion(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "main() { SetPlayerRaceCheck }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 27},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`"label":"SetPlayerRaceCheckpoint"`, "CP_TYPE:type"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("checkpoint completion missing %q: %s", value, output.String())
+		}
+	}
+}
+
 func TestCompletionIncludesLocalSymbolsAndMacros(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "#define PROJECT_NAME \"test\"\nstock Helper() {}\nmain() {}"
