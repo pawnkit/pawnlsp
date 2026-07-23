@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.11.1 - 2026-07-23
+
+### Fixed
+
+- Prefer workspace declarations over API entries with the same name.
+- Bound broad completion results and let clients request narrower results.
+
 ## 0.11.0 - 2026-07-23
 
 ### Added

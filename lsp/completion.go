@@ -31,6 +31,8 @@ type completionData struct {
 	Start  int    `json:"start,omitempty"`
 }
 
+const maxCompletionItems = 500
+
 func (s *server) completion(id, raw json.RawMessage) error {
 	var params textPositionParams
 	if err := json.Unmarshal(raw, &params); err != nil {
@@ -50,7 +52,15 @@ func (s *server) completion(id, raw json.RawMessage) error {
 	prefix, _, _ := identifierAt(doc.Text, int(offset))
 	items := completionItems(doc, prefix, int(offset))
 	items = s.workspaceCompletionItems(items, prefix)
-	return s.respond(id, items)
+	items = apiCompletionItems(items, doc, prefix)
+	return s.respond(id, completionResponse(items))
+}
+
+func completionResponse(items []map[string]any) any {
+	if len(items) <= maxCompletionItems {
+		return items
+	}
+	return map[string]any{"isIncomplete": true, "items": items[:maxCompletionItems]}
 }
 
 type includeCompletionContext struct {
@@ -200,23 +210,39 @@ func completionItems(doc *document, prefix string, offset int) []map[string]any 
 		}
 	}
 
-	if resolver, ok := doc.Names.(apiNameResolver); ok && resolver.index != nil {
-		for _, entry := range resolver.index.All() {
-			if !resolver.available(entry) {
-				continue
-			}
-			item := map[string]any{
-				"kind": completionAPIKind(entry.Kind), "detail": apiDeclaration(entry),
-				"sortText": "3_" + strings.ToLower(entry.Name),
-				"data":     completionData{Kind: "api", URI: doc.URI, Name: entry.Name},
-			}
-			if entry.Deprecated != nil {
-				item["tags"] = []int{1}
-			}
-			add(entry.Name, item)
+	sort.Slice(items, func(i, j int) bool { return completionItemLess(items[i], items[j]) })
+	return items
+}
+
+func apiCompletionItems(items []map[string]any, doc *document, prefix string) []map[string]any {
+	resolver, ok := doc.Names.(apiNameResolver)
+	if !ok || resolver.index == nil || len(items) > maxCompletionItems {
+		return items
+	}
+	seen := make(map[string]bool, len(items))
+	for _, item := range items {
+		if label, ok := item["label"].(string); ok {
+			seen[label] = true
 		}
 	}
-
+	for _, entry := range resolver.index.All() {
+		if seen[entry.Name] || !resolver.available(entry) || prefix != "" && !strings.HasPrefix(strings.ToLower(entry.Name), strings.ToLower(prefix)) {
+			continue
+		}
+		seen[entry.Name] = true
+		item := map[string]any{
+			"label": entry.Name, "kind": completionAPIKind(entry.Kind), "detail": apiDeclaration(entry),
+			"sortText": "3_" + strings.ToLower(entry.Name),
+			"data":     completionData{Kind: "api", URI: doc.URI, Name: entry.Name},
+		}
+		if entry.Deprecated != nil {
+			item["tags"] = []int{1}
+		}
+		items = append(items, item)
+		if len(items) > maxCompletionItems {
+			break
+		}
+	}
 	sort.Slice(items, func(i, j int) bool { return completionItemLess(items[i], items[j]) })
 	return items
 }
@@ -351,6 +377,14 @@ func completionItemLess(left, right map[string]any) bool {
 	leftLabel, _ := left["label"].(string)
 	rightLabel, _ := right["label"].(string)
 	return strings.ToLower(leftLabel) < strings.ToLower(rightLabel)
+}
+
+func completionPriority(item map[string]any) int {
+	sortText, _ := item["sortText"].(string)
+	if len(sortText) >= 2 && sortText[1] == '_' && sortText[0] >= '0' && sortText[0] <= '9' {
+		return int(sortText[0] - '0')
+	}
+	return 9
 }
 
 func completionSymbolKind(kind symbol.Kind) int {

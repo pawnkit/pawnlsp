@@ -247,10 +247,10 @@ func (s *server) workspaceOccurrences(name string) []workspaceOccurrence {
 }
 
 func (s *server) workspaceCompletionItems(items []map[string]any, prefix string) []map[string]any {
-	seen := make(map[string]bool, len(items))
-	for _, item := range items {
+	indexes := make(map[string]int, len(items))
+	for index, item := range items {
 		if label, ok := item["label"].(string); ok {
-			seen[label] = true
+			indexes[label] = index
 		}
 	}
 	for _, result := range s.workspaceResults() {
@@ -259,13 +259,12 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 		}
 		for _, candidate := range result.Symbols.Symbols {
 			scope, ok := result.Symbols.Scope(candidate.Scope)
-			if !ok || scope.Kind != symbol.ScopeFile || seen[candidate.Name] {
+			if !ok || scope.Kind != symbol.ScopeFile {
 				continue
 			}
 			if prefix != "" && !strings.HasPrefix(strings.ToLower(candidate.Name), strings.ToLower(prefix)) {
 				continue
 			}
-			seen[candidate.Name] = true
 			item := map[string]any{
 				"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
 				"sortText": "2_" + strings.ToLower(candidate.Name),
@@ -275,6 +274,14 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 					item["data"] = completionData{Kind: "workspace", URI: uri.String(), Name: candidate.Name, Start: int(candidate.Span.Start)}
 				}
 			}
+			if existing, found := indexes[candidate.Name]; found {
+				if completionPriority(items[existing]) <= completionPriority(item) {
+					continue
+				}
+				items[existing] = item
+				continue
+			}
+			indexes[candidate.Name] = len(items)
 			items = append(items, item)
 		}
 	}

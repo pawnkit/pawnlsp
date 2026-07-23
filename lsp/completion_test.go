@@ -89,6 +89,29 @@ func TestCompletionIncludesDirectives(t *testing.T) {
 	}
 }
 
+func TestCompletionResponseCapsLargeLists(t *testing.T) {
+	items := make([]map[string]any, maxCompletionItems+1)
+	for index := range items {
+		items[index] = map[string]any{"label": "item"}
+	}
+	response, ok := completionResponse(items).(map[string]any)
+	if !ok || response["isIncomplete"] != true {
+		t.Fatalf("response = %#v", response)
+	}
+	got, ok := response["items"].([]map[string]any)
+	if !ok || len(got) != maxCompletionItems {
+		t.Fatalf("items = %T, %d", response["items"], len(got))
+	}
+}
+
+func TestCompletionPriority(t *testing.T) {
+	project := map[string]any{"sortText": "2_helper"}
+	api := map[string]any{"sortText": "3_helper"}
+	if completionPriority(project) >= completionPriority(api) {
+		t.Fatalf("project priority = %d, API priority = %d", completionPriority(project), completionPriority(api))
+	}
+}
+
 func TestServerReturnsCompletionItems(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "#define PROJECT_NAME \"test\"\nstock Helper() {}\nmain() { SetP }"

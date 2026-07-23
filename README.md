@@ -26,7 +26,8 @@ The server provides:
 
 Completion follows project include roots and handles preprocessor directives.
 Symbol and API documentation is loaded when an item is selected, which keeps
-large completion lists smaller.
+large completion lists smaller. Broad results are bounded; typing more of the
+name asks the server for a narrower list.
 
 Diagnostic codes link to their pawnlint rule or the pawn-analysis
 troubleshooting reference when the client supports LSP code descriptions.
