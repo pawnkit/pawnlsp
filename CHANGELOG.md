@@ -2,6 +2,17 @@
 
 Notable changes are recorded here.
 
+## 0.11.0 - 2026-07-23
+
+### Added
+
+- Added project-aware completion for include paths and preprocessor directives.
+- Added source comments to macro hover.
+
+### Changed
+
+- Resolve completion documentation and full declarations only when selected.
+
 ## 0.10.1 - 2026-07-23
 
 ### Added

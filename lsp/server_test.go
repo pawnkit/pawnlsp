@@ -538,14 +538,14 @@ func TestServerReturnsSharedHover(t *testing.T) {
 
 func TestServerReturnsMacroHover(t *testing.T) {
 	uri := tempDocumentURI(t)
-	text := "#define LIMIT 42\nmain() { return LIMIT; }"
+	text := "// Highest accepted value.\n#define LIMIT 42\nmain() { return LIMIT; }"
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
 		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 18},
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 2, "character": 18},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
@@ -553,7 +553,7 @@ func TestServerReturnsMacroHover(t *testing.T) {
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "#define LIMIT 42") {
+	if !strings.Contains(output.String(), "#define LIMIT 42") || !strings.Contains(output.String(), "Highest accepted value.") {
 		t.Fatalf("macro hover missing: %s", output.String())
 	}
 }

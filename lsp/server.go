@@ -48,6 +48,7 @@ type document struct {
 	Version     int
 	Diagnostics []diagnostic.Diagnostic
 	Includes    preprocess.IncludeResolver
+	Candidates  includeCandidateProvider
 	Names       sema.Resolver
 	Analysis    *analysis.Result
 	Revision    int64
@@ -81,8 +82,17 @@ type apiNameResolver struct {
 type projectIncludeResolver struct {
 	resolver interface {
 		Resolve(fromFile, spec string, quoted bool) (string, bool)
+		Complete(fromFile, prefix string, quoted bool, limit int) []projectinclude.Candidate
 	}
 	fsys fsx.FS
+}
+
+func (r projectIncludeResolver) Complete(fromURI, prefix string, angle bool, limit int) []projectinclude.Candidate {
+	fromFile, err := coresource.URI(fromURI).Filename()
+	if err != nil {
+		return nil
+	}
+	return r.resolver.Complete(fromFile, prefix, !angle, limit)
 }
 
 func (r projectIncludeResolver) Resolve(fromURI, path string, angle bool) ([]byte, string, bool) {
@@ -279,7 +289,7 @@ func (s *server) handle(request message) (bool, error) {
 				"textDocumentSync": 1, "codeActionProvider": true,
 				"callHierarchyProvider":  true,
 				"diagnosticProvider":     map[string]any{"interFileDependencies": true, "workspaceDiagnostics": true},
-				"completionProvider":     map[string]any{"triggerCharacters": []string{"@"}},
+				"completionProvider":     map[string]any{"triggerCharacters": []string{"@", "#", "<", "\"", "/", "\\"}, "resolveProvider": true},
 				"documentSymbolProvider": true, "definitionProvider": true,
 				"documentHighlightProvider": true,
 				"foldingRangeProvider":      true,
@@ -334,6 +344,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.outgoingCalls(request.ID, request.Params)
 	case "textDocument/completion":
 		return false, s.completion(request.ID, request.Params)
+	case "completionItem/resolve":
+		return false, s.resolveCompletion(request.ID, request.Params)
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
 	case "textDocument/diagnostic":
@@ -416,7 +428,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	}
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Root: root, Text: []byte(params.TextDocument.Text),
-		Version: params.TextDocument.Version, Includes: includes, Names: names, ready: make(chan struct{}),
+		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names, ready: make(chan struct{}),
 		Revision: s.projectRevision,
 	}
 	if previous := s.document(doc.URI); previous != nil && previous.cancel != nil {
@@ -459,7 +471,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	}
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: []byte(params.ContentChanges[len(params.ContentChanges)-1].Text),
-		Version: params.TextDocument.Version, Includes: doc.Includes, Names: doc.Names, ready: make(chan struct{}),
+		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names, ready: make(chan struct{}),
 		Revision: doc.Revision,
 	}
 	var accepted bool
@@ -523,7 +535,7 @@ func (s *server) reloadProjects() error {
 		}
 		next := &document{
 			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Version: doc.Version,
-			Includes: includes, Names: names, Revision: revision, ready: make(chan struct{}),
+			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision, ready: make(chan struct{}),
 		}
 		s.mu.Lock()
 		if s.documents[doc.URI] == doc {
@@ -791,12 +803,19 @@ func (s *server) hover(id, raw json.RawMessage) error {
 
 func macroHover(result *preprocess.Result, macro preprocess.Macro) string {
 	declaration := macroSignature(macro)
+	documentation := ""
 	if result != nil && int(macro.File) < len(result.Files) {
-		if source := macroDefinition(result.Files[macro.File].Content, macro.DefSpan); source != "" {
+		file := result.Files[macro.File].Content
+		if source := macroDefinition(file, macro.DefSpan); source != "" {
 			declaration = source
 		}
+		documentation = declarationDocumentation(file, coresource.Span{Start: coresource.Offset(macro.DefSpan.Start), End: coresource.Offset(macro.DefSpan.End)})
 	}
-	return "```pawn\n" + declaration + "\n```"
+	text := "```pawn\n" + declaration + "\n```"
+	if documentation != "" {
+		text += "\n\n" + documentation
+	}
+	return text
 }
 
 func macroDefinition(text []byte, span preprocess.ByteRange) string {

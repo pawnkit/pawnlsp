@@ -2,6 +2,8 @@ package lsp
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,83 @@ import (
 	"github.com/pawnkit/pawn-api/pawnapi"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 )
+
+func TestCompletionIncludesProjectPaths(t *testing.T) {
+	root := t.TempDir()
+	include := filepath.Join(root, "include", "YSI_Coding")
+	if err := os.MkdirAll(include, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(include, "y_hooks.inc"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := "#include <YSI_Coding/y"
+	mainPath := filepath.Join(root, "main.pwn")
+	if err := os.WriteFile(mainPath, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn","pawnkit":{"schemaVersion":1,"includePaths":["include"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolver, _, _ := loadProjectContext(mainPath)
+	provider, ok := resolver.(includeCandidateProvider)
+	if !ok || len(provider.Complete(coresource.FileURI(mainPath).String(), "YSI_Coding/y", true, 20)) != 1 {
+		t.Fatalf("project include completion is unavailable: %T", resolver)
+	}
+	context, ok := includeCompletionAt([]byte(source), len(source))
+	if !ok || context.Prefix != "YSI_Coding/y" {
+		t.Fatalf("include context = %+v, %v", context, ok)
+	}
+	if items := includeCompletionItems(&document{URI: coresource.FileURI(mainPath).String(), Includes: resolver, Candidates: provider, Text: []byte(source)}, context); len(items) != 1 {
+		t.Fatalf("include items = %+v", items)
+	}
+	uri := coresource.FileURI(mainPath).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": source},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": len(source)},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`"label":"YSI_Coding/y_hooks"`, `"newText":"YSI_Coding/y_hooks"`, `"detail":"include file"`} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("include completion missing %q: %s", value, output.String())
+		}
+	}
+	if strings.Contains(output.String(), `"label":"SetPlayerPos"`) {
+		t.Fatalf("include completion contains symbols: %s", output.String())
+	}
+}
+
+func TestCompletionIncludesDirectives(t *testing.T) {
+	uri := tempDocumentURI(t)
+	source := "#inc"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": source},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": len(source)},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"label":"#include"`) || !strings.Contains(output.String(), `"newText":"include"`) {
+		t.Fatalf("directive completion missing: %s", output.String())
+	}
+	if strings.Contains(output.String(), `"label":"#define"`) {
+		t.Fatalf("directive completion ignored prefix: %s", output.String())
+	}
+}
 
 func TestServerReturnsCompletionItems(t *testing.T) {
 	uri := tempDocumentURI(t)
@@ -72,13 +151,16 @@ func TestCompletionIncludesLocalDocumentation(t *testing.T) {
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
 		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 2, "character": 11},
 	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "completionItem/resolve", "params": map[string]any{
+		"label": "Add", "data": completionData{Kind: "local", URI: uri, Source: uri, Name: "Add", Start: strings.Index(text, "stock Add") + len("stock ")},
+	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
 	var output bytes.Buffer
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), `"value":"Adds two values."`) {
+	if !strings.Contains(output.String(), `"value":"Adds two values."`) || !strings.Contains(output.String(), `"detail":"stock Add(left, right)"`) {
 		t.Fatalf("completion documentation missing: %s", output.String())
 	}
 }

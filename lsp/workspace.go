@@ -270,8 +270,10 @@ func (s *server) workspaceCompletionItems(items []map[string]any, prefix string)
 				"label": candidate.Name, "kind": completionSymbolKind(candidate.Kind), "detail": symbolSummary(candidate),
 				"sortText": "2_" + strings.ToLower(candidate.Name),
 			}
-			if documentation := localDocumentation(result, candidate); documentation != "" {
-				item["documentation"] = map[string]any{"kind": "markdown", "value": documentation}
+			if result.Registry != nil {
+				if uri, ok := result.Registry.URI(candidate.Span.File); ok {
+					item["data"] = completionData{Kind: "workspace", URI: uri.String(), Name: candidate.Name, Start: int(candidate.Span.Start)}
+				}
 			}
 			items = append(items, item)
 		}
