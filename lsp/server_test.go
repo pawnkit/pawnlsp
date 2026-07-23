@@ -537,6 +537,59 @@ func TestServerAcceptsLegacyManagedIncludeOptions(t *testing.T) {
 	}
 }
 
+func TestManagedIncludesSurviveDocumentLifecycle(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	managed := filepath.Join(t.TempDir(), "include")
+	if err := os.MkdirAll(managed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(managed, "pawntest.inc"), []byte("#define TEST(%0) forward test_%0(); public test_%0()\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	uri := coresource.FileURI(entry).String()
+	text := "#include <pawntest>\nTEST(example) { return 1; }\n"
+
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
+		"initializationOptions": map[string]any{"pawnkit": map[string]any{
+			"protocolVersion": 1, "managedIncludeRoots": []string{managed},
+		}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didChange", "params": map[string]any{
+		"textDocument":   map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"text": text + "\n"}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "workspace/didChangeWatchedFiles", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didClose", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 3, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), "include-not-found") || strings.Contains(output.String(), "missing-include") {
+		t.Fatalf("managed include was lost: %s", output.String())
+	}
+}
+
 func TestServerResolvesNestedQuotedIncludesAndSparseMacroLabels(t *testing.T) {
 	root := t.TempDir()
 	entry := filepath.Join(root, "gamemodes", "gamemode.pwn")

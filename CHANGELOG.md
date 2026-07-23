@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.26.1 - 2026-07-23
+
+### Changed
+
+- Added lifecycle coverage for editor-managed includes.
+
 ## 0.26.0 - 2026-07-23
 
 ### Added
