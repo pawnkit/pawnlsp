@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.26.3 - 2026-07-23
+
+### Changed
+
+- Updated the API dataset to include confidence and review status.
+
 ## 0.26.2 - 2026-07-23
 
 ### Added

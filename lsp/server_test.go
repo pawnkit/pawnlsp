@@ -1079,5 +1079,9 @@ func bufioReader(value string) *bufio.Reader {
 
 func tempDocumentURI(t *testing.T) string {
 	t.Helper()
-	return coresource.FileURI(filepath.Join(t.TempDir(), "test.pwn")).String()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pawnlint.toml"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return coresource.FileURI(filepath.Join(dir, "test.pwn")).String()
 }
