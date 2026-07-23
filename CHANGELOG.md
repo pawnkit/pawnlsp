@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.25.1 - 2026-07-23
+
+### Fixed
+
+- Updated the embedded API dataset to pawn-api v0.18.0.
+
 ## 0.25.0 - 2026-07-23
 
 ### Added

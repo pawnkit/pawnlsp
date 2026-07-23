@@ -316,7 +316,7 @@ func TestServerReturnsAttachedObjectAPICompletion(t *testing.T) {
 		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 30},
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 29},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
