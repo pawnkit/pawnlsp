@@ -31,6 +31,8 @@ name asks the server for a narrower list.
 
 Diagnostic codes link to their pawnlint rule or the pawn-analysis
 troubleshooting reference when the client supports LSP code descriptions.
+Diagnostics also link to related declarations and source locations when that
+context is available.
 
 The editor must send `file://` document URIs.
 

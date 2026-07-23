@@ -206,16 +206,27 @@ type lspRange struct {
 }
 
 type lspDiagnostic struct {
-	Range           lspRange            `json:"range"`
-	Severity        int                 `json:"severity"`
-	Code            string              `json:"code"`
-	CodeDescription *lspCodeDescription `json:"codeDescription,omitempty"`
-	Source          string              `json:"source"`
-	Message         string              `json:"message"`
+	Range              lspRange                          `json:"range"`
+	Severity           int                               `json:"severity"`
+	Code               string                            `json:"code"`
+	CodeDescription    *lspCodeDescription               `json:"codeDescription,omitempty"`
+	Source             string                            `json:"source"`
+	Message            string                            `json:"message"`
+	RelatedInformation []lspDiagnosticRelatedInformation `json:"relatedInformation,omitempty"`
 }
 
 type lspCodeDescription struct {
 	Href string `json:"href"`
+}
+
+type lspDiagnosticRelatedInformation struct {
+	Location lspLocation `json:"location"`
+	Message  string      `json:"message"`
+}
+
+type lspLocation struct {
+	URI   string   `json:"uri"`
+	Range lspRange `json:"range"`
 }
 
 type textEdit struct {

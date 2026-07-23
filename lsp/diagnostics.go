@@ -9,6 +9,7 @@ import (
 	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawnkit-core/diagnostic"
 	coresource "github.com/pawnkit/pawnkit-core/source"
+	lintdiagnostic "github.com/pawnkit/pawnlint/pkg/diagnostic"
 )
 
 func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
@@ -122,6 +123,7 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 			Range:    offsetRange(text[uri], int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
 			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
+			RelatedInformation: analysisRelatedInformation(result, finding),
 		})
 	}
 	return items
@@ -143,6 +145,7 @@ func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
 			Range: diagnosticRange(doc.Text, finding), Severity: lspSeverity(finding.Severity),
 			Code: finding.RuleID, CodeDescription: documentation,
 			Source: "pawnlint", Message: finding.Message,
+			RelatedInformation: lintRelatedInformation(doc.URI, doc.Text, finding),
 		})
 	}
 	items = append(items, analysisDiagnosticItems(doc.Analysis, doc.Text)...)
@@ -162,6 +165,52 @@ func analysisDiagnosticItems(result *analysis.Result, text []byte) []lspDiagnost
 			Range:    offsetRange(text, int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
 			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
+			RelatedInformation: analysisRelatedInformation(result, finding),
+		})
+	}
+	return items
+}
+
+func analysisRelatedInformation(result *analysis.Result, finding diagnostic.Diagnostic) []lspDiagnosticRelatedInformation {
+	if result == nil || result.Registry == nil {
+		return nil
+	}
+	items := make([]lspDiagnosticRelatedInformation, 0, len(finding.Related))
+	for _, related := range finding.Related {
+		uri, ok := result.Registry.URI(related.Span.File)
+		if !ok {
+			continue
+		}
+		text := analysisFileText(result, uri)
+		items = append(items, lspDiagnosticRelatedInformation{
+			Location: lspLocation{
+				URI:   uri.String(),
+				Range: offsetRange(text, int(related.Span.Start), int(related.Span.End)),
+			},
+			Message: related.Message,
+		})
+	}
+	return items
+}
+
+func analysisFileText(result *analysis.Result, uri coresource.URI) []byte {
+	if result == nil || result.Preprocess == nil {
+		return nil
+	}
+	for _, file := range result.Preprocess.Files {
+		if file.URI == uri.String() {
+			return file.Content
+		}
+	}
+	return nil
+}
+
+func lintRelatedInformation(uri string, text []byte, finding lintdiagnostic.Diagnostic) []lspDiagnosticRelatedInformation {
+	items := make([]lspDiagnosticRelatedInformation, 0, len(finding.Notes))
+	for _, related := range finding.Notes {
+		items = append(items, lspDiagnosticRelatedInformation{
+			Location: lspLocation{URI: uri, Range: offsetRange(text, related.Range.Start.Offset, related.Range.End.Offset)},
+			Message:  related.Message,
 		})
 	}
 	return items

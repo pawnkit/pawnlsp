@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.11.2 - 2026-07-23
+
+### Added
+
+- Added related source locations to analysis and lint diagnostics.
+
 ## 0.11.1 - 2026-07-23
 
 ### Fixed
