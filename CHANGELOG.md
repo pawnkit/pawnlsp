@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.9.10 - 2026-07-23
+
+### Fixed
+
+- Updated API, project, analysis, formatting, and linting dependencies.
+
 ## 0.9.9 - 2026-07-22
 
 ### Fixed
