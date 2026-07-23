@@ -9,6 +9,10 @@ tasks:
     cmds:
       - go test ./...
 
+  corpus:
+    cmds:
+      - PAWN_CORPUS_DIR="$(cd "${PAWN_CORPUS_DIR:-../pawn-corpus}" && pwd)" go test -count=1 ./...
+
   lint:
     cmds:
       - golangci-lint run ./...

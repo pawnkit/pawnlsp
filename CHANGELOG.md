@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.25.3 - 2026-07-23
+
+### Fixed
+
+- Updated analysis and linting so tag names are not shown as undefined.
+
 ## 0.25.2 - 2026-07-23
 
 ### Changed

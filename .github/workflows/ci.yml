@@ -43,6 +43,28 @@ jobs:
         with:
           version: v2.11.4
 
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pawnlsp
+        uses: actions/checkout@v7
+        with:
+          path: pawnlsp
+      - name: Check out pawn-corpus
+        uses: actions/checkout@v7
+        with:
+          repository: pawnkit/pawn-corpus
+          ref: ff6369e0060edb8667379abd35207d7d893ea12b
+          path: pawn-corpus
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: pawnlsp/go.mod
+      - name: Run corpus-backed tests
+        working-directory: pawnlsp
+        env:
+          PAWN_CORPUS_DIR: ${{ github.workspace }}/pawn-corpus
+        run: go test -count=1 ./...
+
   security:
     runs-on: ubuntu-latest
     steps:
