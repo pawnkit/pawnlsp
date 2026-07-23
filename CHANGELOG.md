@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.16.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for core global objects.
+
 ## 0.15.0 - 2026-07-23
 
 ### Added
