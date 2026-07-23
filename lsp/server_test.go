@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -463,7 +464,9 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	text := "#include <math>\n#include <pawntest>\nTEST(one) { return Add(20, 22); }\nTEST(two) { return Add(2, 3); }\n"
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
-		"initializationOptions": map[string]any{"includePaths": []string{extraRoot}},
+		"initializationOptions": map[string]any{"pawnkit": map[string]any{
+			"protocolVersion": 1, "managedIncludeRoots": []string{extraRoot},
+		}},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
 		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String(), "version": 1, "text": text},
@@ -485,6 +488,52 @@ func TestServerResolvesProjectAndExtraIncludes(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "duplicate-function-definition") || strings.Contains(output.String(), "symbol/redeclared") {
 		t.Fatalf("macro invocation reported as a duplicate: %s", output.String())
+	}
+}
+
+func TestManagedToolStateUpdate(t *testing.T) {
+	root := t.TempDir()
+	s := &server{documents: make(map[string]*document)}
+	raw, err := json.Marshal(map[string]any{
+		"protocolVersion": 1, "managedIncludeRoots": []string{root, root},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.didChangeManagedTools(raw); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.managedRoots) != 1 || s.managedRoots[0] != filepath.Clean(root) {
+		t.Fatalf("managed roots = %v", s.managedRoots)
+	}
+}
+
+func TestManagedToolStateRejectsInvalidValues(t *testing.T) {
+	if _, err := cleanManagedIncludeRoots([]string{"relative/include"}); err == nil {
+		t.Fatal("relative root was accepted")
+	}
+	roots := make([]string, managedIncludeRootLimit+1)
+	for index := range roots {
+		roots[index] = filepath.Join(t.TempDir(), strconv.Itoa(index))
+	}
+	if _, err := cleanManagedIncludeRoots(roots); err == nil {
+		t.Fatal("oversized root list was accepted")
+	}
+}
+
+func TestServerAcceptsLegacyManagedIncludeOptions(t *testing.T) {
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{
+		"initializationOptions": map[string]any{"includePaths": []string{t.TempDir()}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output.String(), `"error"`) {
+		t.Fatalf("legacy options failed: %s", output.String())
 	}
 }
 

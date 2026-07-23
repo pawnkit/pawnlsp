@@ -67,7 +67,7 @@ type server struct {
 	writeMu         sync.Mutex
 	workers         sync.WaitGroup
 	rules           *lint.Registrar
-	includeRoots    []string
+	managedRoots    []string
 	workspaces      map[string]*workspaceIndex
 	projectRevision int64
 }
@@ -130,12 +130,17 @@ func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeR
 	return resolver, profile
 }
 
-func cleanIncludeRoots(roots []string) []string {
+const managedIncludeRootLimit = 32
+
+func cleanManagedIncludeRoots(roots []string) ([]string, error) {
+	if len(roots) > managedIncludeRootLimit {
+		return nil, fmt.Errorf("managed include roots exceed the limit of %d", managedIncludeRootLimit)
+	}
 	cleaned := make([]string, 0, len(roots))
 	seen := make(map[string]bool)
 	for _, root := range roots {
 		if !filepath.IsAbs(root) {
-			continue
+			return nil, fmt.Errorf("managed include root %q must be absolute", root)
 		}
 		root = filepath.Clean(root)
 		if !seen[root] {
@@ -143,7 +148,7 @@ func cleanIncludeRoots(roots []string) []string {
 			cleaned = append(cleaned, root)
 		}
 	}
-	return cleaned
+	return cleaned, nil
 }
 
 func (r apiNameResolver) ResolveName(name string) sema.NameState {
@@ -286,12 +291,27 @@ func (s *server) handle(request message) (bool, error) {
 		var params struct {
 			InitializationOptions struct {
 				IncludePaths []string `json:"includePaths"`
+				PawnKit      *struct {
+					ProtocolVersion     int      `json:"protocolVersion"`
+					ManagedIncludeRoots []string `json:"managedIncludeRoots"`
+				} `json:"pawnkit"`
 			} `json:"initializationOptions"`
 		}
 		if len(request.Params) != 0 {
 			_ = json.Unmarshal(request.Params, &params)
 		}
-		s.includeRoots = cleanIncludeRoots(params.InitializationOptions.IncludePaths)
+		roots := params.InitializationOptions.IncludePaths
+		if state := params.InitializationOptions.PawnKit; state != nil {
+			if state.ProtocolVersion != 1 {
+				return false, fmt.Errorf("unsupported PawnKit editor protocol version %d", state.ProtocolVersion)
+			}
+			roots = state.ManagedIncludeRoots
+		}
+		cleaned, err := cleanManagedIncludeRoots(roots)
+		if err != nil {
+			return false, err
+		}
+		s.managedRoots = cleaned
 		s.projectRevision++
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
@@ -339,6 +359,8 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.reloadProjects()
 	case "workspace/didChangeConfiguration":
 		return false, s.didChangeConfiguration(request.Params)
+	case "pawnkit/didChangeManagedTools":
+		return false, s.didChangeManagedTools(request.Params)
 	case "workspace/symbol":
 		return false, s.workspaceSymbols(request.ID, request.Params)
 	case "workspace/diagnostic":
@@ -406,11 +428,32 @@ func (s *server) didChangeConfiguration(raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	roots := cleanIncludeRoots(params.Settings.Pawn.IncludePaths)
-	if slices.Equal(roots, s.includeRoots) {
+	return s.updateManagedIncludeRoots(params.Settings.Pawn.IncludePaths)
+}
+
+func (s *server) didChangeManagedTools(raw json.RawMessage) error {
+	var params struct {
+		ProtocolVersion     int      `json:"protocolVersion"`
+		ManagedIncludeRoots []string `json:"managedIncludeRoots"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return err
+	}
+	if params.ProtocolVersion != 1 {
+		return fmt.Errorf("unsupported PawnKit editor protocol version %d", params.ProtocolVersion)
+	}
+	return s.updateManagedIncludeRoots(params.ManagedIncludeRoots)
+}
+
+func (s *server) updateManagedIncludeRoots(values []string) error {
+	roots, err := cleanManagedIncludeRoots(values)
+	if err != nil {
+		return err
+	}
+	if slices.Equal(roots, s.managedRoots) {
 		return nil
 	}
-	s.includeRoots = roots
+	s.managedRoots = roots
 	return s.reloadProjects()
 }
 
@@ -429,7 +472,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	includes, profile, root := loadProjectContext(path, s.includeRoots...)
+	includes, profile, root := loadProjectContext(path, s.managedRoots...)
 	names := s.names
 	if resolver, ok := names.(apiNameResolver); ok {
 		resolver.profile = profile
@@ -536,7 +579,7 @@ func (s *server) reloadProjects() error {
 	s.mu.Unlock()
 
 	for _, doc := range documents {
-		includes, profile, root := loadProjectContext(doc.Path, s.includeRoots...)
+		includes, profile, root := loadProjectContext(doc.Path, s.managedRoots...)
 		names := s.names
 		if resolver, ok := names.(apiNameResolver); ok {
 			resolver.profile = profile

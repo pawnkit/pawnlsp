@@ -2,6 +2,16 @@
 
 Notable changes are recorded here.
 
+## 0.26.0 - 2026-07-23
+
+### Added
+
+- Added the versioned editor-managed tool protocol from RFC 0008.
+
+### Changed
+
+- Updated project loading and lint diagnostics to their current releases.
+
 ## 0.25.4 - 2026-07-23
 
 ### Changed
