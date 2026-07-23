@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.15.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for menus.
+
 ## 0.14.0 - 2026-07-23
 
 ### Added
