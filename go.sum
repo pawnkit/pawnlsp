@@ -12,8 +12,8 @@ github.com/google/renameio v0.1.0 h1:GOZbcHa3HfsPKPlmyPyN2KEohoMXOhdMbHrvbpl2QaA
 github.com/google/renameio v0.1.0/go.mod h1:KWCgfxg9yswjAJkECMjeO8J8rahYeXnNhOm40UhjYkI=
 github.com/pawnkit/pawn-analysis v0.1.12 h1:LuAFqO1vUp1q8yLvIv2owXkOXT1uv5MGo24y4G6IEMo=
 github.com/pawnkit/pawn-analysis v0.1.12/go.mod h1:9YIyg2E3DliSL4ldTr1BAy9JP+i/5194da7MVtlg/2Q=
-github.com/pawnkit/pawn-api v0.8.0 h1:stMZe8p7fB9SoAVVxXEFIDpRHDlwqzqorIlF6+haS5c=
-github.com/pawnkit/pawn-api v0.8.0/go.mod h1:kG0iHjG85iOU27geni1yaXk2WfSmJuhUoWkSrhUS7Ik=
+github.com/pawnkit/pawn-api v0.9.0 h1:+hZuUgWMTdzuISxW9Q6OrBZ2d8ngfX8V+EfR7Jw81Yw=
+github.com/pawnkit/pawn-api v0.9.0/go.mod h1:kG0iHjG85iOU27geni1yaXk2WfSmJuhUoWkSrhUS7Ik=
 github.com/pawnkit/pawn-parser v1.1.9 h1:LbhFV4XOLdi8/UXv2HTmZcTC2fGaHGms83ZSM2bcNuw=
 github.com/pawnkit/pawn-parser v1.1.9/go.mod h1:6iG1RfoTtroAadrF5A60QZc/zwalxBwn2gbgCQ/QO8Y=
 github.com/pawnkit/pawn-project v0.1.5 h1:iPqtblD6zfe+lNjuhOgvGwg+38inyKlPXudGbrqv0sM=
