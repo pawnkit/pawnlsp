@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.21.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for pickups.
+
 ## 0.20.0 - 2026-07-23
 
 ### Added
