@@ -13,6 +13,8 @@ go install github.com/pawnkit/pawnlsp/cmd/pawnlsp@latest
 Configure your editor's Pawn language client to start `pawnlsp`
 over standard input and output.
 
+Check the installed version with `pawnlsp --version`.
+
 The server provides:
 
 - diagnostics for open documents and indexed project files

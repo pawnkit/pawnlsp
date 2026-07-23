@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.26.2 - 2026-07-23
+
+### Added
+
+- Added `pawnlsp --version` for installers and support reports.
+
 ## 0.26.1 - 2026-07-23
 
 ### Changed
