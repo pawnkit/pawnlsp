@@ -16,7 +16,7 @@ over standard input and output.
 The server provides:
 
 - diagnostics for open documents and indexed project files
-- safe quick fixes
+- safe fixes, rule documentation, and local pawnlint suppressions
 - documented completion, hover, signature help, and semantic highlighting
 - document and workspace symbols, definitions, hover, references, rename, and call hierarchy
 - document highlights, folding, and structural selection

@@ -1279,22 +1279,56 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 	actions := make([]map[string]any, 0)
 	if doc != nil {
 		for _, finding := range doc.Diagnostics {
-			if finding.Fix == nil || !safeFix(s.rules, finding.RuleID) {
+			if s.rules == nil {
 				continue
 			}
-			edits := make([]textEdit, 0, len(finding.Fix.Edits))
-			for _, edit := range finding.Fix.Edits {
-				edits = append(edits, textEdit{Range: offsetRange(doc.Text, edit.Range.Start.Offset, edit.Range.End.Offset), NewText: edit.NewText})
+			if _, known := s.rules.Lookup(finding.RuleID); !known {
+				continue
+			}
+			if finding.Fix != nil && safeFix(s.rules, finding.RuleID) {
+				edits := make([]textEdit, 0, len(finding.Fix.Edits))
+				for _, edit := range finding.Fix.Edits {
+					edits = append(edits, textEdit{Range: offsetRange(doc.Text, edit.Range.Start.Offset, edit.Range.End.Offset), NewText: edit.NewText})
+				}
+				actions = append(actions, map[string]any{
+					"title":       finding.Fix.Description,
+					"kind":        "quickfix",
+					"isPreferred": true,
+					"edit":        map[string]any{"changes": map[string]any{doc.URI: edits}},
+				})
 			}
 			actions = append(actions, map[string]any{
-				"title":       finding.Fix.Description,
-				"kind":        "quickfix",
-				"isPreferred": true,
-				"edit":        map[string]any{"changes": map[string]any{doc.URI: edits}},
+				"title": "Suppress " + finding.RuleID + " on this line",
+				"kind":  "quickfix",
+				"edit":  map[string]any{"changes": map[string]any{doc.URI: []textEdit{suppressionEdit(doc.Text, finding)}}},
+			})
+			actions = append(actions, map[string]any{
+				"title":   "Explain " + finding.RuleID,
+				"kind":    "quickfix",
+				"command": map[string]any{"title": "Explain rule", "command": "pawn.openRuleDocumentation", "arguments": []string{finding.RuleID}},
 			})
 		}
 	}
 	return s.respond(id, actions)
+}
+
+func suppressionEdit(source []byte, finding diagnostic.Diagnostic) textEdit {
+	line := diagnosticRange(source, finding).Start.Line
+	start := 0
+	for current := 0; current < line && start < len(source); current++ {
+		if next := bytes.IndexByte(source[start:], '\n'); next >= 0 {
+			start += next + 1
+		} else {
+			start = len(source)
+		}
+	}
+	end := start
+	for end < len(source) && (source[end] == ' ' || source[end] == '\t') {
+		end++
+	}
+	indent := string(source[start:end])
+	point := lspRange{Start: position{Line: line}, End: position{Line: line}}
+	return textEdit{Range: point, NewText: indent + "// pawnlint-disable-next-line " + finding.RuleID + "\n"}
 }
 
 func safeFix(registry *lint.Registrar, ruleID string) bool {

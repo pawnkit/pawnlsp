@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.10.0 - 2026-07-23
+
+### Added
+
+- Added code actions to explain or locally suppress pawnlint diagnostics.
+
 ## 0.9.10 - 2026-07-23
 
 ### Fixed

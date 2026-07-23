@@ -62,7 +62,7 @@ func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := output.String()
-	for _, fragment := range []string{"textDocumentSync", "diagnosticProvider", "empty-condition-body", "remove the stray semicolon", "quickfix"} {
+	for _, fragment := range []string{"textDocumentSync", "diagnosticProvider", "empty-condition-body", "remove the stray semicolon", "Suppress empty-condition-body", "Explain empty-condition-body", "quickfix"} {
 		if !strings.Contains(got, fragment) {
 			t.Fatalf("output does not contain %q: %s", fragment, got)
 		}
