@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.19.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for object queries, attachments, and custom models.
+
 ## 0.18.0 - 2026-07-23
 
 ### Added
