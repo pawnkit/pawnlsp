@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.20.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for player classes.
+
 ## 0.19.0 - 2026-07-23
 
 ### Added
