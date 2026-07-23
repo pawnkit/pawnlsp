@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.10.1 - 2026-07-23
+
+### Added
+
+- Added clickable documentation links to lint and analysis diagnostics.
+
 ## 0.10.0 - 2026-07-23
 
 ### Added

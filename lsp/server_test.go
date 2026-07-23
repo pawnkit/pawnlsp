@@ -207,7 +207,7 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"diagnosticProvider", "workspaceDiagnostics", coresource.FileURI(brokenPath).String(), "pawn-analysis:symbol/redeclared"} {
+	for _, value := range []string{"diagnosticProvider", "workspaceDiagnostics", coresource.FileURI(brokenPath).String(), "pawn-analysis:symbol/redeclared", "docs/diagnostics.md"} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("workspace diagnostics missing %q: %s", value, output.String())
 		}

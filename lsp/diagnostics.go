@@ -24,7 +24,7 @@ func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
 	if doc == nil {
 		return s.respond(id, map[string]any{"kind": "full", "items": []any{}})
 	}
-	return s.respond(id, map[string]any{"kind": "full", "items": documentDiagnosticItems(doc)})
+	return s.respond(id, map[string]any{"kind": "full", "items": s.documentDiagnosticItems(doc)})
 }
 
 func (s *server) workspaceDiagnostics(id json.RawMessage) error {
@@ -121,18 +121,28 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 		items[uri] = append(items[uri], lspDiagnostic{
 			Range:    offsetRange(text[uri], int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
-			Source: finding.Source, Message: finding.Message,
+			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
 		})
 	}
 	return items
 }
 
-func documentDiagnosticItems(doc *document) []lspDiagnostic {
+func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
 	items := make([]lspDiagnostic, 0, len(doc.Diagnostics))
 	for _, finding := range doc.Diagnostics {
+		var documentation *lspCodeDescription
+		if strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
+			documentation = analysisDiagnosticDocumentation("")
+		}
+		if s.rules != nil {
+			if _, ok := s.rules.Lookup(finding.RuleID); ok {
+				documentation = diagnosticDocumentation("https://github.com/pawnkit/pawnlint/blob/main/docs/rules/" + finding.RuleID + ".md")
+			}
+		}
 		items = append(items, lspDiagnostic{
 			Range: diagnosticRange(doc.Text, finding), Severity: lspSeverity(finding.Severity),
-			Code: finding.RuleID, Source: "pawnlint", Message: finding.Message,
+			Code: finding.RuleID, CodeDescription: documentation,
+			Source: "pawnlint", Message: finding.Message,
 		})
 	}
 	items = append(items, analysisDiagnosticItems(doc.Analysis, doc.Text)...)
@@ -151,10 +161,24 @@ func analysisDiagnosticItems(result *analysis.Result, text []byte) []lspDiagnost
 		items = append(items, lspDiagnostic{
 			Range:    offsetRange(text, int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
-			Source: finding.Source, Message: finding.Message,
+			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
 		})
 	}
 	return items
+}
+
+func diagnosticDocumentation(url string) *lspCodeDescription {
+	if url == "" {
+		return nil
+	}
+	return &lspCodeDescription{Href: url}
+}
+
+func analysisDiagnosticDocumentation(url string) *lspCodeDescription {
+	if url == "" {
+		url = "https://github.com/pawnkit/pawn-analysis/blob/main/docs/diagnostics.md"
+	}
+	return diagnosticDocumentation(url)
 }
 
 func macroDiagnostic(result *analysis.Result, finding diagnostic.Diagnostic) bool {

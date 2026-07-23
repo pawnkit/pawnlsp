@@ -24,6 +24,9 @@ The server provides:
 - parameter-name inlay hints
 - Pawn project and `pawnlint.toml` discovery
 
+Diagnostic codes link to their pawnlint rule or the pawn-analysis
+troubleshooting reference when the client supports LSP code descriptions.
+
 The editor must send `file://` document URIs.
 
 ## Contributing
