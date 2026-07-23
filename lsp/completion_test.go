@@ -139,6 +139,30 @@ func TestServerReturnsCompletionItems(t *testing.T) {
 	}
 }
 
+func TestServerReturnsActorAPICompletion(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "main() { CreateAct }"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/completion", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 0, "character": 18},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`"label":"CreateActor"`, "native CreateActor(skin, Float:x, Float:y, Float:z, Float:angle)"} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("actor completion missing %q: %s", value, output.String())
+		}
+	}
+}
+
 func TestCompletionIncludesLocalSymbolsAndMacros(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "#define PROJECT_NAME \"test\"\nstock Helper() {}\nmain() {}"

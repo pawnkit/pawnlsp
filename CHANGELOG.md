@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.12.0 - 2026-07-23
+
+### Added
+
+- Added completion, hover, and signature data for the SA-MP/open.mp actor API.
+
 ## 0.11.2 - 2026-07-23
 
 ### Added
