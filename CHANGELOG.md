@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.26.6 - 2026-07-24
+
+### Changed
+
+- Updated to pawnlint v1.1.7, which also reuses each include's CST walk and
+  semantic model across edits instead of rebuilding them every time.
+
 ## 0.26.5 - 2026-07-24
 
 ### Fixed
