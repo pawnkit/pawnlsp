@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.26.7 - 2026-07-24
+
+### Fixed
+
+- Stopped rebuilding a full line index (and copying the source) for every
+  diagnostic's position; the document's index is now built once and reused.
+- Updated to pawn-analysis v0.1.17, which stops tokenizing the entry file
+  twice per edit.
+
 ## 0.26.6 - 2026-07-24
 
 ### Changed

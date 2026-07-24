@@ -100,6 +100,17 @@ func workspaceDiagnosticURI(root string, uri coresource.URI) bool {
 	return true
 }
 
+type lineIndexSet map[coresource.URI]*coresource.LineIndex
+
+func (set lineIndexSet) forURI(uri coresource.URI, text []byte) *coresource.LineIndex {
+	if index, ok := set[uri]; ok {
+		return index
+	}
+	index := coresource.NewLineIndex(string(text))
+	set[uri] = index
+	return index
+}
+
 func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]lspDiagnostic {
 	items := make(map[coresource.URI][]lspDiagnostic)
 	if result == nil || result.Preprocess == nil || result.Registry == nil {
@@ -114,22 +125,24 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 		text[uri] = file.Content
 		items[uri] = nil
 	}
+	indexes := make(lineIndexSet, len(text))
 	for _, finding := range result.Diagnostics {
 		uri, ok := result.Registry.URI(finding.Primary.File)
 		if !ok || macroDiagnostic(result, finding) {
 			continue
 		}
 		items[uri] = append(items[uri], lspDiagnostic{
-			Range:    offsetRange(text[uri], int(finding.Primary.Start), int(finding.Primary.End)),
+			Range:    offsetRangeWithIndex(indexes.forURI(uri, text[uri]), int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
 			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
-			RelatedInformation: analysisRelatedInformation(result, finding),
+			RelatedInformation: analysisRelatedInformation(result, finding, indexes),
 		})
 	}
 	return items
 }
 
 func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
+	index := coresource.NewLineIndex(string(doc.Text))
 	items := make([]lspDiagnostic, 0, len(doc.Diagnostics))
 	for _, finding := range doc.Diagnostics {
 		var documentation *lspCodeDescription
@@ -142,10 +155,10 @@ func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
 			}
 		}
 		items = append(items, lspDiagnostic{
-			Range: diagnosticRange(doc.Text, finding), Severity: lspSeverity(finding.Severity),
+			Range: offsetRangeWithIndex(index, finding.Range.Start.Offset, finding.Range.End.Offset), Severity: lspSeverity(finding.Severity),
 			Code: finding.RuleID, CodeDescription: documentation,
 			Source: "pawnlint", Message: finding.Message,
-			RelatedInformation: lintRelatedInformation(doc.URI, doc.Text, finding),
+			RelatedInformation: lintRelatedInformationWithIndex(doc.URI, index, finding),
 		})
 	}
 	items = append(items, analysisDiagnosticItems(doc.Analysis, doc.Text)...)
@@ -156,22 +169,29 @@ func analysisDiagnosticItems(result *analysis.Result, text []byte) []lspDiagnost
 	if result == nil {
 		return nil
 	}
+	index := coresource.NewLineIndex(string(text))
+	indexes := make(lineIndexSet, 1)
+	if result.Registry != nil {
+		if uri, ok := result.Registry.URI(result.File); ok {
+			indexes[uri] = index
+		}
+	}
 	items := make([]lspDiagnostic, 0, len(result.Diagnostics))
 	for _, finding := range result.Diagnostics {
 		if finding.Primary.File != result.File || macroDiagnostic(result, finding) {
 			continue
 		}
 		items = append(items, lspDiagnostic{
-			Range:    offsetRange(text, int(finding.Primary.Start), int(finding.Primary.End)),
+			Range:    offsetRangeWithIndex(index, int(finding.Primary.Start), int(finding.Primary.End)),
 			Severity: coreLSPSeverity(finding.Severity), Code: finding.Code,
 			CodeDescription: analysisDiagnosticDocumentation(finding.DocsURL), Source: finding.Source, Message: finding.Message,
-			RelatedInformation: analysisRelatedInformation(result, finding),
+			RelatedInformation: analysisRelatedInformation(result, finding, indexes),
 		})
 	}
 	return items
 }
 
-func analysisRelatedInformation(result *analysis.Result, finding diagnostic.Diagnostic) []lspDiagnosticRelatedInformation {
+func analysisRelatedInformation(result *analysis.Result, finding diagnostic.Diagnostic, indexes lineIndexSet) []lspDiagnosticRelatedInformation {
 	if result == nil || result.Registry == nil {
 		return nil
 	}
@@ -181,11 +201,11 @@ func analysisRelatedInformation(result *analysis.Result, finding diagnostic.Diag
 		if !ok {
 			continue
 		}
-		text := analysisFileText(result, uri)
+		index := indexes.forURI(uri, analysisFileText(result, uri))
 		items = append(items, lspDiagnosticRelatedInformation{
 			Location: lspLocation{
 				URI:   uri.String(),
-				Range: offsetRange(text, int(related.Span.Start), int(related.Span.End)),
+				Range: offsetRangeWithIndex(index, int(related.Span.Start), int(related.Span.End)),
 			},
 			Message: related.Message,
 		})
@@ -205,11 +225,11 @@ func analysisFileText(result *analysis.Result, uri coresource.URI) []byte {
 	return nil
 }
 
-func lintRelatedInformation(uri string, text []byte, finding lintdiagnostic.Diagnostic) []lspDiagnosticRelatedInformation {
+func lintRelatedInformationWithIndex(uri string, index *coresource.LineIndex, finding lintdiagnostic.Diagnostic) []lspDiagnosticRelatedInformation {
 	items := make([]lspDiagnosticRelatedInformation, 0, len(finding.Notes))
 	for _, related := range finding.Notes {
 		items = append(items, lspDiagnosticRelatedInformation{
-			Location: lspLocation{URI: uri, Range: offsetRange(text, related.Range.Start.Offset, related.Range.End.Offset)},
+			Location: lspLocation{URI: uri, Range: offsetRangeWithIndex(index, related.Range.Start.Offset, related.Range.End.Offset)},
 			Message:  related.Message,
 		})
 	}

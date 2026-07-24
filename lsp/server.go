@@ -73,6 +73,7 @@ type server struct {
 	workspaces      map[string]*workspaceIndex
 	projectRevision int64
 	parseCache      *lintproject.ParseCache
+	tokenCache      *preprocess.TokenCache
 }
 
 const (
@@ -252,6 +253,7 @@ func Run(in io.Reader, out io.Writer) error {
 		in: bufio.NewReader(in), out: out, documents: make(map[string]*document),
 		names: apiNameResolver{index: apiIndex}, snapshot: query.New(), rules: lintrules.Default(),
 		workspaces: make(map[string]*workspaceIndex), parseCache: lintproject.NewParseCache(),
+		tokenCache: preprocess.NewTokenCache(),
 	}
 	for {
 		body, err := readFrame(s.in)
@@ -643,6 +645,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
 		MaxOutputTokens: analysisOutputTokenLimit,
 		Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
+		TokenCache:      s.tokenCache,
 	})
 	if analysisErr != nil {
 		return analysisErr
@@ -1468,17 +1471,27 @@ func diagnosticRange(source []byte, finding diagnostic.Diagnostic) lspRange {
 }
 
 func offsetRange(source []byte, start, end int) lspRange {
-	return lspRange{Start: offsetPosition(source, start), End: offsetPosition(source, end)}
+	index := coresource.NewLineIndex(string(source))
+	return offsetRangeWithIndex(index, start, end)
 }
 
 func offsetPosition(text []byte, offset int) position {
+	index := coresource.NewLineIndex(string(text))
+	return offsetPositionWithIndex(index, offset)
+}
+
+func offsetRangeWithIndex(index *coresource.LineIndex, start, end int) lspRange {
+	return lspRange{Start: offsetPositionWithIndex(index, start), End: offsetPositionWithIndex(index, end)}
+}
+
+func offsetPositionWithIndex(index *coresource.LineIndex, offset int) position {
+	content := index.Content()
 	if offset < 0 {
 		offset = 0
 	}
-	if offset > len(text) {
-		offset = len(text)
+	if offset > len(content) {
+		offset = len(content)
 	}
-	index := coresource.NewLineIndex(string(text))
 	for offset > 0 && !index.ValidOffset(coresource.Offset(offset)) {
 		offset--
 	}

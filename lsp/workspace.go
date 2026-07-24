@@ -85,7 +85,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 				return
 			}
 		}
-		index.files, index.err = buildWorkspaceIndex(ctx, doc.Root, open, doc.Includes, doc.Names)
+		index.files, index.err = buildWorkspaceIndex(ctx, doc.Root, open, doc.Includes, doc.Names, s.tokenCache)
 	})
 }
 
@@ -108,6 +108,7 @@ func buildWorkspaceIndex(
 	open map[string][]byte,
 	includes preprocess.IncludeResolver,
 	names sema.Resolver,
+	tokenCache *preprocess.TokenCache,
 ) (map[coresource.URI]*analysis.Result, error) {
 	paths, err := workspaceSourceFiles(root)
 	if err != nil {
@@ -135,6 +136,7 @@ func buildWorkspaceIndex(
 	}
 	workspace, err := snapshot.AnalyzeWorkspace(ctx, analysis.Options{
 		Includes: includes, Names: names, Revision: root, MaxOutputTokens: analysisOutputTokenLimit,
+		TokenCache: tokenCache,
 	})
 	if err != nil {
 		return nil, err
