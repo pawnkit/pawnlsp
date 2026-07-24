@@ -31,6 +31,7 @@ import (
 	"github.com/pawnkit/pawnlint/pkg/diagnostic"
 	"github.com/pawnkit/pawnlint/pkg/editor"
 	"github.com/pawnkit/pawnlint/pkg/lint"
+	lintproject "github.com/pawnkit/pawnlint/pkg/project"
 	lintrules "github.com/pawnkit/pawnlint/pkg/rules"
 )
 
@@ -71,10 +72,13 @@ type server struct {
 	managedRoots    []string
 	workspaces      map[string]*workspaceIndex
 	projectRevision int64
+	parseCache      *lintproject.ParseCache
 }
 
-const analysisOutputTokenLimit = 50_000
-const documentPublishDebounce = 150 * time.Millisecond
+const (
+	analysisOutputTokenLimit = 50_000
+	documentPublishDebounce  = 150 * time.Millisecond
+)
 
 type apiNameResolver struct {
 	index   *pawnapi.Index
@@ -247,7 +251,7 @@ func Run(in io.Reader, out io.Writer) error {
 	s := &server{
 		in: bufio.NewReader(in), out: out, documents: make(map[string]*document),
 		names: apiNameResolver{index: apiIndex}, snapshot: query.New(), rules: lintrules.Default(),
-		workspaces: make(map[string]*workspaceIndex),
+		workspaces: make(map[string]*workspaceIndex), parseCache: lintproject.NewParseCache(),
 	}
 	for {
 		body, err := readFrame(s.in)
@@ -628,7 +632,7 @@ func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, d
 }
 
 func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Snapshot) error {
-	diagnostics, err := lintDocument(doc)
+	diagnostics, err := lintDocument(doc, s.parseCache)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -1353,8 +1357,8 @@ func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
 	return out
 }
 
-func lintDocument(doc *document) ([]diagnostic.Diagnostic, error) {
-	return editor.Diagnose(doc.Path, doc.Text, filepath.Dir(doc.Path))
+func lintDocument(doc *document, cache *lintproject.ParseCache) ([]diagnostic.Diagnostic, error) {
+	return editor.DiagnoseWithCache(doc.Path, doc.Text, filepath.Dir(doc.Path), cache)
 }
 
 func (s *server) codeActions(id, raw json.RawMessage) error {

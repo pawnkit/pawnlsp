@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.26.5 - 2026-07-24
+
+### Fixed
+
+- Reused a lint parse cache across edits of the same document instead of
+  building a fresh one on every keystroke.
+
 ## 0.26.4 - 2026-07-24
 
 ### Fixed
