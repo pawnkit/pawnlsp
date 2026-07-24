@@ -38,6 +38,39 @@ func TestDidChangeRejectsStaleVersion(t *testing.T) {
 	}
 }
 
+func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
+	uri := tempDocumentURI(t)
+	s := &server{documents: map[string]*document{}}
+
+	open, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main() {}\n"},
+	})
+	if err := s.didOpen(open); err != nil {
+		t.Fatal(err)
+	}
+
+	const lastVersion = 6
+	for version := 2; version <= lastVersion; version++ {
+		text := fmt.Sprintf("main() { new value%d; }\n", version)
+		params, _ := json.Marshal(map[string]any{
+			"textDocument":   map[string]any{"uri": uri, "version": version},
+			"contentChanges": []map[string]any{{"text": text}},
+		})
+		if err := s.didChange(params); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	doc := s.readyDocument(uri)
+	wantText := fmt.Sprintf("main() { new value%d; }\n", lastVersion)
+	if doc == nil || doc.Version != lastVersion || string(doc.Text) != wantText {
+		t.Fatalf("got %+v, want version=%d text=%q", doc, lastVersion, wantText)
+	}
+	if doc.Analysis == nil {
+		t.Fatal("final analysis missing")
+	}
+}
+
 func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	uri := tempDocumentURI(t)
 	source := "main() { if (true); { return; } }\n"

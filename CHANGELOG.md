@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.26.4 - 2026-07-24
+
+### Fixed
+
+- Debounced document analysis after `didChange` so rapid typing coalesces
+  into one analysis instead of restarting on every keystroke.
+
 ## 0.26.3 - 2026-07-23
 
 ### Changed

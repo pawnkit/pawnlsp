@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/preprocess"
@@ -73,6 +74,7 @@ type server struct {
 }
 
 const analysisOutputTokenLimit = 50_000
+const documentPublishDebounce = 150 * time.Millisecond
 
 type apiNameResolver struct {
 	index   *pawnapi.Index
@@ -534,7 +536,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	s.mu.Lock()
 	s.documents[next.URI] = next
 	s.mu.Unlock()
-	s.schedulePublish(next, s.snapshot)
+	s.schedulePublishAfter(next, s.snapshot, documentPublishDebounce)
 	s.restartWorkspaceIndex(next)
 	return nil
 }
@@ -603,11 +605,24 @@ func (s *server) reloadProjects() error {
 }
 
 func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
+	s.schedulePublishAfter(doc, snapshot, 0)
+}
+
+func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, delay time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
 	doc.cancel = cancel
 	s.workers.Go(func() {
 		defer cancel()
 		defer close(doc.ready)
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			defer timer.Stop()
+			select {
+			case <-timer.C:
+			case <-ctx.Done():
+				return
+			}
+		}
 		_ = s.publish(ctx, doc, snapshot)
 	})
 }
