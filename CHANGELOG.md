@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.26.10 - 2026-07-25
+
+### Changed
+
+- Updated to pawnlint v1.1.10.
+
 ## 0.26.9 - 2026-07-25
 
 ### Changed
