@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.26.8 - 2026-07-25
+
+### Fixed
+
+- Stopped analyzing each document twice per edit; the lint pass now reuses
+  the analysis already computed for hover, completion, and diagnostics
+  instead of running it again for its own shared diagnostics.
+- Updated to pawnlint v1.1.8.
+
 ## 0.26.7 - 2026-07-24
 
 ### Fixed

@@ -634,13 +634,6 @@ func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, d
 }
 
 func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Snapshot) error {
-	diagnostics, err := lintDocument(doc, s.parseCache)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if err != nil {
-		diagnostics = []diagnostic.Diagnostic{{RuleID: "configuration", Severity: diagnostic.SeverityError, Message: err.Error(), Filename: doc.Path}}
-	}
 	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
 		MaxOutputTokens: analysisOutputTokenLimit,
@@ -649,6 +642,13 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	})
 	if analysisErr != nil {
 		return analysisErr
+	}
+	diagnostics, err := lintDocument(doc, s.parseCache, shared)
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		diagnostics = []diagnostic.Diagnostic{{RuleID: "configuration", Severity: diagnostic.SeverityError, Message: err.Error(), Filename: doc.Path}}
 	}
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
@@ -1360,8 +1360,8 @@ func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
 	return out
 }
 
-func lintDocument(doc *document, cache *lintproject.ParseCache) ([]diagnostic.Diagnostic, error) {
-	return editor.DiagnoseWithCache(doc.Path, doc.Text, filepath.Dir(doc.Path), cache)
+func lintDocument(doc *document, cache *lintproject.ParseCache, shared *analysis.Result) ([]diagnostic.Diagnostic, error) {
+	return editor.DiagnoseWithCache(doc.Path, doc.Text, filepath.Dir(doc.Path), cache, shared)
 }
 
 func (s *server) codeActions(id, raw json.RawMessage) error {
