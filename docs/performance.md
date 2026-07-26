@@ -87,3 +87,12 @@ go tool pprof -top -alloc_space heap.pprof
 
 Do not commit profile files. Record the command, hardware, and useful findings
 when a change moves a bottleneck.
+
+For one run, stage timings can be written to the server log with:
+
+```sh
+PAWNKIT_ANALYSIS_TRACE=1 pawnlsp
+```
+
+The trace includes the document version, duration, cancellation state, and
+reuse count. Leave it disabled during normal editing.

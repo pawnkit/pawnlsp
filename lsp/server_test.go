@@ -3,6 +3,7 @@ package lsp
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -258,6 +259,39 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	s.workers.Wait()
 	if !strings.Contains(output.String(), `"method":"workspace/diagnostic/refresh"`) {
 		t.Fatalf("diagnostic refresh missing: %s", output.String())
+	}
+}
+
+func TestPublishEmitsAnalysisTrace(t *testing.T) {
+	uri := coresource.FileURI("main.pwn")
+	text := []byte("main() { return 1; }\n")
+	doc := &document{
+		URI: uri.String(), Path: "main.pwn", Text: text, Version: 2,
+		ready: make(chan struct{}), analysisReady: make(chan struct{}),
+	}
+	stages := make(map[analysis.Stage]bool)
+	s := &server{
+		documents:  map[string]*document{doc.URI: doc},
+		snapshot:   query.New(query.Document{URI: uri, Text: text, Version: 2}),
+		parseCache: lintproject.NewParseCache(),
+		tokenCache: preprocess.NewTokenCache(),
+		analysisTrace: func(gotURI string, version int, event analysis.TraceEvent) {
+			if gotURI != doc.URI || version != doc.Version {
+				t.Errorf("trace document = %s@%d, want %s@%d", gotURI, version, doc.URI, doc.Version)
+			}
+			stages[event.Stage] = true
+		},
+		lint: func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
+			return nil, nil
+		},
+	}
+	if err := s.publish(context.Background(), doc, s.snapshot); err != nil {
+		t.Fatal(err)
+	}
+	for _, stage := range []analysis.Stage{analysis.StagePreprocess, analysis.StageParseOriginal, analysis.StageSemanticCFG} {
+		if !stages[stage] {
+			t.Errorf("stage %s was not traced", stage)
+		}
 	}
 }
 

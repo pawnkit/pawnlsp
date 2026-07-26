@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.30.0 - 2026-07-26
+
+### Added
+
+- Added opt-in analysis-stage tracing through `RunWithOptions` and
+  `PAWNKIT_ANALYSIS_TRACE`.
+
 ## 0.29.4 - 2026-07-26
 
 ### Changed

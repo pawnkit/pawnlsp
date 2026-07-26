@@ -95,6 +95,7 @@ type server struct {
 	publishes       map[string]*publishQueue
 	nextRequestID   atomic.Uint64
 	lint            func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
+	analysisTrace   func(string, int, analysis.TraceEvent)
 }
 
 const (
@@ -265,7 +266,18 @@ type textEdit struct {
 	NewText string   `json:"newText"`
 }
 
+// Run serves LSP requests with default options.
 func Run(in io.Reader, out io.Writer) error {
+	return RunWithOptions(in, out, RunOptions{})
+}
+
+// RunOptions configures optional server diagnostics.
+type RunOptions struct {
+	AnalysisTrace func(uri string, version int, event analysis.TraceEvent)
+}
+
+// RunWithOptions serves LSP requests with options.
+func RunWithOptions(in io.Reader, out io.Writer, opts RunOptions) error {
 	apiIndex, err := pawnapi.Load()
 	if err != nil {
 		return fmt.Errorf("load Pawn API metadata: %w", err)
@@ -274,7 +286,8 @@ func Run(in io.Reader, out io.Writer) error {
 		in: bufio.NewReader(in), out: out, documents: make(map[string]*document),
 		names: apiNameResolver{index: apiIndex}, snapshot: query.New(), rules: lintrules.Default(),
 		workspaces: make(map[string]*workspaceIndex), parseCache: lintproject.NewParseCache(),
-		tokenCache: preprocess.NewTokenCache(),
+		tokenCache:    preprocess.NewTokenCache(),
+		analysisTrace: opts.AnalysisTrace,
 	}
 	for {
 		body, err := readFrame(s.in)
@@ -746,11 +759,18 @@ func (s *server) runPublish(request *publishRequest) {
 }
 
 func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Snapshot) error {
+	var trace func(analysis.TraceEvent)
+	if s.analysisTrace != nil {
+		trace = func(event analysis.TraceEvent) {
+			s.analysisTrace(doc.URI, doc.Version, event)
+		}
+	}
 	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
 		MaxOutputTokens: analysisOutputTokenLimit,
 		Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
 		TokenCache:      s.tokenCache,
+		Trace:           trace,
 	})
 	if analysisErr != nil {
 		return analysisErr
