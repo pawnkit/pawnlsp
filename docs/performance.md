@@ -56,6 +56,9 @@ that still dominates the benchmark.
 Range-based edits update line starts from the changed span instead of scanning
 the whole document again. Analysis still needs a contiguous source buffer.
 
+Tag checks are reused for unchanged larger functions. Small functions keep the
+one-pass path because caching them costs more memory than it saves.
+
 The first CPU profile found repeated linear scans by declaration and reference
 span. Span indexes removed that bottleneck. The remaining edit still rebuilds
 the parser, preprocessor, semantic model, control-flow graphs, and lint model,

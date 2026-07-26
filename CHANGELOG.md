@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.29.4 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.5.2 and pawnlint v1.3.3.
+- Reused tag checks for unchanged larger functions without caching small
+  functions.
+
 ## 0.29.3 - 2026-07-26
 
 ### Changed
