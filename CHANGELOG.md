@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.28.2 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.4.0.
+- Passed immutable editor buffers into analysis snapshots without another
+  full-file copy.
+
 ## 0.28.1 - 2026-07-26
 
 ### Changed

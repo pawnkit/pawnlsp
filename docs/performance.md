@@ -27,18 +27,22 @@ Reference system:
 | pawn-analysis v0.1.19 | full document | 658–672 ms | 466 MB | 1.17 million |
 | pawn-analysis v0.1.19 | incremental range | 667–700 ms | 467 MB | 1.17 million |
 
-One-pass scaling with pawn-analysis v0.3.1 and pawnlint v1.2.0:
+One-pass scaling with pawn-analysis v0.4.0 and pawnlint v1.2.0:
 
 | Lines | Time | Allocated | Allocations |
 |---:|---:|---:|---:|
 | 10,000 | 226–234 ms | 113 MB | 270,000 |
 | 25,000 | 321–326 ms | 198 MB | 526,000 |
-| 50,000 | 493–522 ms | 328 MB | 927,000 |
+| 50,000 | 498–543 ms | 327 MB | 927,000 |
 | 100,000 | 913–945 ms | 589 MB | 1.73 million |
 
 These figures include the 150 ms typing debounce. They are a diagnostic
 baseline, not the target: the 50,000-line case still needs to fall below
 300 ms.
+
+Owned analysis snapshots remove one full-file copy from each editor revision.
+This is visible in allocations but does not remove the parser and lint work
+that still dominates the benchmark.
 
 The first CPU profile found repeated linear scans by declaration and reference
 span. Span indexes removed that bottleneck. The remaining edit still rebuilds

@@ -513,7 +513,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if s.snapshot == nil {
 		s.snapshot = query.New()
 	}
-	s.snapshot, _ = s.snapshot.Update(query.Document{URI: coresource.URI(doc.URI), Text: doc.Text, Version: int64(doc.Version)})
+	s.snapshot, _ = s.snapshot.UpdateOwned(query.Document{URI: coresource.URI(doc.URI), Text: doc.Text, Version: int64(doc.Version)})
 	s.mu.Lock()
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
@@ -582,7 +582,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 		Revision: doc.Revision,
 	}
 	var accepted bool
-	s.snapshot, accepted = s.snapshot.Update(query.Document{URI: coresource.URI(next.URI), Text: next.Text, Version: int64(next.Version)})
+	s.snapshot, accepted = s.snapshot.UpdateOwned(query.Document{URI: coresource.URI(next.URI), Text: next.Text, Version: int64(next.Version)})
 	if !accepted {
 		return nil
 	}
