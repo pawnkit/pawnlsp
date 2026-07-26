@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
 		TextDocument struct {
 			URI string `json:"uri"`
 		} `json:"textDocument"`
+		PreviousResultID string `json:"previousResultId"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
@@ -25,7 +27,17 @@ func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
 	if doc == nil {
 		return s.respond(id, map[string]any{"kind": "full", "items": []any{}})
 	}
-	return s.respond(id, map[string]any{"kind": "full", "items": s.documentDiagnosticItems(doc)})
+	resultID := documentDiagnosticResultID(doc)
+	if params.PreviousResultID == resultID {
+		return s.respond(id, map[string]any{"kind": "unchanged", "resultId": resultID})
+	}
+	return s.respond(id, map[string]any{
+		"kind": "full", "resultId": resultID, "items": s.documentDiagnosticItems(doc),
+	})
+}
+
+func documentDiagnosticResultID(doc *document) string {
+	return fmt.Sprintf("%d:%d", doc.Revision, doc.Version)
 }
 
 func (s *server) workspaceDiagnostics(id json.RawMessage) error {

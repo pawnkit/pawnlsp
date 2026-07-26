@@ -173,6 +173,31 @@ func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	}
 }
 
+func TestServerReturnsUnchangedDiagnostics(t *testing.T) {
+	uri := tempDocumentURI(t)
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main() {}\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "previousResultId": "1:1",
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"kind":"unchanged","resultId":"1:1"`) {
+		t.Fatalf("server did not return unchanged diagnostics: %s", output.String())
+	}
+}
+
 func TestServerReturnsRelatedDiagnosticLocations(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "new value;\nnew value;\n"

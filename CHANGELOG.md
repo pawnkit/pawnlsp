@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.28.0 - 2026-07-26
+
+### Added
+
+- Returned unchanged diagnostic reports when the client already has the
+  current document result.
+
 ## 0.27.5 - 2026-07-26
 
 ### Fixed
