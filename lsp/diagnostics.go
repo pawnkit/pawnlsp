@@ -142,7 +142,7 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 }
 
 func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	items := make([]lspDiagnostic, 0, len(doc.Diagnostics))
 	for _, finding := range doc.Diagnostics {
 		var documentation *lspCodeDescription

@@ -72,7 +72,7 @@ func (s *server) foldingRanges(id, raw json.RawMessage) error {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Parse == nil {
 		return s.respond(id, []any{})
 	}
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	ranges := make([]map[string]any, 0)
 	seen := make(map[[2]int]bool)
 	walkSyntax(doc.Analysis.Parse.Syntax(), func(node parser.SyntaxNode) {
@@ -121,7 +121,7 @@ func (s *server) selectionRanges(id, raw json.RawMessage) error {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Parse == nil {
 		return s.respond(id, []any{})
 	}
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	items := make([]any, 0, len(params.Positions))
 	for _, requested := range params.Positions {
 		offset, err := index.Offset(coresource.Position{Line: requested.Line, Character: requested.Character}, coresource.UTF16)

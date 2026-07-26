@@ -136,7 +136,7 @@ func semanticAPI(entry pawnapi.Entry) (int, int) {
 }
 
 func encodeSemanticTokens(doc *document, tokens []semanticToken) []int {
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	data := make([]int, 0, len(tokens)*5)
 	previousLine, previousCharacter := 0, 0
 	for _, token := range tokens {

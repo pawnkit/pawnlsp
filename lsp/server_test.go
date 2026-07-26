@@ -75,7 +75,8 @@ func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
 func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := []byte("main() { new value = \"😀\"; }\n")
-	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: text, Version: 1}
+	index := coresource.NewLineIndex(string(text))
+	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: text, Index: index, Version: 1}
 	s := &server{
 		documents: map[string]*document{uri: doc},
 		snapshot:  query.New(query.Document{URI: coresource.URI(uri), Text: text, Version: 1}),
@@ -99,6 +100,9 @@ func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
 	got := s.document(uri)
 	if want := "main() { new answer = \"Pawn\"; }\n"; got == nil || string(got.Text) != want {
 		t.Fatalf("text = %q, want %q", got.Text, want)
+	}
+	if got.Index == nil || got.Index == index {
+		t.Fatal("change did not replace the document line index")
 	}
 	if got.cancel != nil {
 		got.cancel()

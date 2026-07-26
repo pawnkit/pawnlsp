@@ -22,7 +22,7 @@ func (s *server) inlayHints(id, raw json.RawMessage) error {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Parse == nil {
 		return s.respond(id, []any{})
 	}
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	start, err := index.Offset(coresource.Position{Line: params.Range.Start.Line, Character: params.Range.Start.Character}, coresource.UTF16)
 	if err != nil {
 		return s.respond(id, []any{})

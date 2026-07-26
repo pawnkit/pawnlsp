@@ -74,6 +74,7 @@ func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 	text := benchmarkGamemode(lines)
 	doc := &document{
 		URI: uri.String(), Path: "benchmark.pwn", Text: text, Version: 1,
+		Index: coresource.NewLineIndex(string(text)),
 		ready: closedChannel(),
 	}
 	server := &server{

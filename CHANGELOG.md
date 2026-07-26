@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.27.1 - 2026-07-26
+
+### Changed
+
+- Reused each open document's line index across editor requests.
+- Updated to pawn-analysis v0.1.20 to avoid parsing workspace files twice.
+
 ## 0.27.0 - 2026-07-26
 
 ### Changed

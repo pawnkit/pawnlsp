@@ -47,6 +47,7 @@ type document struct {
 	Path        string
 	Root        string
 	Text        []byte
+	Index       *coresource.LineIndex
 	Version     int
 	Diagnostics []diagnostic.Diagnostic
 	Includes    preprocess.IncludeResolver
@@ -488,6 +489,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	}
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Root: root, Text: []byte(params.TextDocument.Text),
+		Index:   coresource.NewLineIndex(params.TextDocument.Text),
 		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names, ready: make(chan struct{}),
 		Revision: s.projectRevision,
 	}
@@ -531,12 +533,13 @@ func (s *server) didChange(raw json.RawMessage) error {
 		doc.cancel()
 	}
 	text := doc.Text
+	index := doc.lineIndex()
 	for _, change := range params.ContentChanges {
 		if change.Range == nil {
 			text = []byte(change.Text)
+			index = coresource.NewLineIndex(change.Text)
 			continue
 		}
-		index := coresource.NewLineIndex(string(text))
 		start, err := index.Offset(coresource.Position{
 			Line: change.Range.Start.Line, Character: change.Range.Start.Character,
 		}, coresource.UTF16)
@@ -557,9 +560,10 @@ func (s *server) didChange(raw json.RawMessage) error {
 		nextText = append(nextText, change.Text...)
 		nextText = append(nextText, text[end:]...)
 		text = nextText
+		index = coresource.NewLineIndex(string(text))
 	}
 	next := &document{
-		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text,
+		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text, Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names, ready: make(chan struct{}),
 		Revision: doc.Revision,
 	}
@@ -622,7 +626,7 @@ func (s *server) reloadProjects() error {
 			names = resolver
 		}
 		next := &document{
-			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Version: doc.Version,
+			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Index: doc.Index, Version: doc.Version,
 			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision, ready: make(chan struct{}),
 		}
 		s.mu.Lock()
@@ -636,6 +640,13 @@ func (s *server) reloadProjects() error {
 		}
 	}
 	return nil
+}
+
+func (d *document) lineIndex() *coresource.LineIndex {
+	if d.Index != nil {
+		return d.Index
+	}
+	return coresource.NewLineIndex(string(d.Text))
 }
 
 func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
@@ -800,7 +811,7 @@ func (s *server) definition(id, raw json.RawMessage) error {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Symbols == nil {
 		return s.respond(id, nil)
 	}
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	offset, err := index.Offset(coresource.Position{
 		Line: params.Position.Line, Character: params.Position.Character,
 	}, coresource.UTF16)
@@ -1239,7 +1250,7 @@ func documentOffset(doc *document, pos position) (coresource.Offset, bool) {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Symbols == nil {
 		return 0, false
 	}
-	index := coresource.NewLineIndex(string(doc.Text))
+	index := doc.lineIndex()
 	offset, err := index.Offset(coresource.Position{Line: pos.Line, Character: pos.Character}, coresource.UTF16)
 	return offset, err == nil
 }

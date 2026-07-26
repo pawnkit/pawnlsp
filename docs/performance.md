@@ -31,6 +31,10 @@ span. Span indexes removed that bottleneck. The remaining edit still rebuilds
 the parser, preprocessor, semantic model, control-flow graphs, and lint model,
 which explains why incremental transport alone has little effect.
 
+Workspace indexing uses a separate path. Pawn-analysis v0.1.20 reuses its
+prepared syntax and symbols when it completes workspace semantics instead of
+parsing every closed file twice.
+
 Create profiles with:
 
 ```sh
