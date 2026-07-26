@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.12 - 2026-07-26
+
+### Performance
+
+- Reuse preprocessing after fixed-position comment edits.
+
 ## 0.32.11 - 2026-07-26
 
 ### Performance
