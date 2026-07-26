@@ -79,7 +79,7 @@ func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
 func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := []byte("main() { new value = \"😀\"; }\n")
-	index := coresource.NewLineIndex(string(text))
+	index := coresource.NewLineIndexBytes(text)
 	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: text, Index: index, Version: 1}
 	s := &server{
 		documents: map[string]*document{uri: doc},
@@ -107,6 +107,10 @@ func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
 	}
 	if got.Index == nil || got.Index == index {
 		t.Fatal("change did not replace the document line index")
+	}
+	indexText := got.Index.Bytes()
+	if len(got.Text) == 0 || len(indexText) == 0 || &got.Text[0] != &indexText[0] {
+		t.Fatal("document and line index do not share the revision buffer")
 	}
 	if got.cancel != nil {
 		got.cancel()

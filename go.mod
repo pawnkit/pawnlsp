@@ -8,7 +8,7 @@ require (
 	github.com/pawnkit/pawn-parser v1.2.0
 	github.com/pawnkit/pawn-project v0.1.9
 	github.com/pawnkit/pawnfmt v1.3.5
-	github.com/pawnkit/pawnkit-core v0.3.0
+	github.com/pawnkit/pawnkit-core v0.4.0
 	github.com/pawnkit/pawnlint v1.3.4
 )
 

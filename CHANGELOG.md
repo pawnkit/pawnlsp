@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.31.1 - 2026-07-26
+
+### Performance
+
+- Reuse the line index buffer after editor range changes.
+
 ## 0.31.0 - 2026-07-26
 
 ### Added

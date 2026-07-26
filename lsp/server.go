@@ -523,9 +523,10 @@ func (s *server) didOpen(raw json.RawMessage) error {
 		resolver.profile = profile
 		names = resolver
 	}
+	text := []byte(params.TextDocument.Text)
 	doc := &document{
-		URI: params.TextDocument.URI, Path: path, Root: root, Text: []byte(params.TextDocument.Text),
-		Index:   coresource.NewLineIndex(params.TextDocument.Text),
+		URI: params.TextDocument.URI, Path: path, Root: root, Text: text,
+		Index:   coresource.NewLineIndexBytes(text),
 		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: s.projectRevision,
@@ -574,7 +575,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	for _, change := range params.ContentChanges {
 		if change.Range == nil {
 			text = []byte(change.Text)
-			index = coresource.NewLineIndex(change.Text)
+			index = coresource.NewLineIndexBytes(text)
 			continue
 		}
 		start, err := index.Offset(coresource.Position{
@@ -597,7 +598,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 			return fmt.Errorf("apply change: %w", err)
 		}
 		index = nextIndex
-		text = []byte(index.Content())
+		text = index.Bytes()
 	}
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text, Index: index,
@@ -685,7 +686,7 @@ func (d *document) lineIndex() *coresource.LineIndex {
 	if d.Index != nil {
 		return d.Index
 	}
-	return coresource.NewLineIndex(string(d.Text))
+	return coresource.NewLineIndexBytes(d.Text)
 }
 
 func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
