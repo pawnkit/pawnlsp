@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/preprocess"
@@ -17,6 +18,8 @@ import (
 	"github.com/pawnkit/pawn-analysis/sema"
 	"github.com/pawnkit/pawn-api/pawnapi"
 	coresource "github.com/pawnkit/pawnkit-core/source"
+	"github.com/pawnkit/pawnlint/pkg/diagnostic"
+	lintproject "github.com/pawnkit/pawnlint/pkg/project"
 	lintrules "github.com/pawnkit/pawnlint/pkg/rules"
 )
 
@@ -174,27 +177,96 @@ func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 }
 
 func TestServerReturnsUnchangedDiagnostics(t *testing.T) {
-	uri := tempDocumentURI(t)
-	var input bytes.Buffer
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "main() {}\n"},
-	}})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri},
-	}})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri}, "previousResultId": "1:1",
-	}})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown"})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
-
+	uri := coresource.FileURI("main.pwn").String()
 	var output bytes.Buffer
-	if err := Run(&input, &output); err != nil {
+	ready := closedChannel()
+	doc := &document{
+		URI: uri, Path: "main.pwn", Text: []byte("main() {}\n"), Version: 1, Revision: 2,
+		ready: ready, analysisReady: closedChannel(),
+	}
+	s := &server{out: &output, documents: map[string]*document{uri: doc}}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "previousResultId": "2:1:full",
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), `"kind":"unchanged","resultId":"1:1"`) {
+	if err := s.documentDiagnostics(json.RawMessage("3"), params); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"kind":"unchanged","resultId":"2:1:full"`) {
 		t.Fatalf("server did not return unchanged diagnostics: %s", output.String())
+	}
+}
+
+func TestDocumentDiagnosticResultIDTracksReadiness(t *testing.T) {
+	doc := &document{Version: 3, Revision: 4, ready: make(chan struct{})}
+	if got := documentDiagnosticResultID(doc, doc.fullReady()); got != "4:3:analysis" {
+		t.Fatalf("analysis result ID = %q", got)
+	}
+	close(doc.ready)
+	if got := documentDiagnosticResultID(doc, doc.fullReady()); got != "4:3:full" {
+		t.Fatalf("full result ID = %q", got)
+	}
+}
+
+func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
+	uri := coresource.FileURI("main.pwn")
+	text := []byte("main() {}\n")
+	doc := &document{
+		URI: uri.String(), Path: "main.pwn", Text: text, Version: 1,
+		ready: make(chan struct{}), analysisReady: make(chan struct{}),
+	}
+	lintStarted := make(chan struct{})
+	releaseLint := make(chan struct{})
+	var output bytes.Buffer
+	s := &server{
+		out:        &output,
+		documents:  map[string]*document{doc.URI: doc},
+		snapshot:   query.New(query.Document{URI: uri, Text: text, Version: 1}),
+		parseCache: lintproject.NewParseCache(),
+		tokenCache: preprocess.NewTokenCache(),
+		lint: func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
+			close(lintStarted)
+			<-releaseLint
+			return nil, nil
+		},
+	}
+	s.schedulePublish(doc, s.snapshot)
+	waitForSignal(t, lintStarted, "lint start")
+	waitForSignal(t, doc.analysisReady, "analysis readiness")
+	if doc.Analysis == nil {
+		t.Fatal("analysis was not stored before lint")
+	}
+	params, err := json.Marshal(map[string]any{"textDocument": map[string]any{"uri": doc.URI}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.documentDiagnostics(json.RawMessage("1"), params); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"resultId":"0:1:analysis"`) {
+		t.Fatalf("partial diagnostic result missing: %s", output.String())
+	}
+	select {
+	case <-doc.ready:
+		t.Fatal("full diagnostics became ready before lint completed")
+	default:
+	}
+	close(releaseLint)
+	waitForSignal(t, doc.ready, "full diagnostics")
+	s.workers.Wait()
+	if !strings.Contains(output.String(), `"method":"workspace/diagnostic/refresh"`) {
+		t.Fatalf("diagnostic refresh missing: %s", output.String())
+	}
+}
+
+func waitForSignal(t *testing.T, signal <-chan struct{}, name string) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(3 * time.Second):
+		t.Fatalf("timed out waiting for %s", name)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
@@ -43,20 +44,23 @@ type message struct {
 }
 
 type document struct {
-	URI         string
-	Path        string
-	Root        string
-	Text        []byte
-	Index       *coresource.LineIndex
-	Version     int
-	Diagnostics []diagnostic.Diagnostic
-	Includes    preprocess.IncludeResolver
-	Candidates  includeCandidateProvider
-	Names       sema.Resolver
-	Analysis    *analysis.Result
-	Revision    int64
-	ready       chan struct{}
-	cancel      context.CancelFunc
+	URI           string
+	Path          string
+	Root          string
+	Text          []byte
+	Index         *coresource.LineIndex
+	Version       int
+	Diagnostics   []diagnostic.Diagnostic
+	Includes      preprocess.IncludeResolver
+	Candidates    includeCandidateProvider
+	Names         sema.Resolver
+	Analysis      *analysis.Result
+	Revision      int64
+	ready         chan struct{}
+	analysisReady chan struct{}
+	analysisOnce  sync.Once
+	fullOnce      sync.Once
+	cancel        context.CancelFunc
 }
 
 type publishRequest struct {
@@ -89,6 +93,8 @@ type server struct {
 	parseCache      *lintproject.ParseCache
 	tokenCache      *preprocess.TokenCache
 	publishes       map[string]*publishQueue
+	nextRequestID   atomic.Uint64
+	lint            func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
 }
 
 const (
@@ -303,6 +309,9 @@ func Run(in io.Reader, out io.Writer) error {
 }
 
 func (s *server) handle(request message) (bool, error) {
+	if request.Method == "" && hasRequestID(request.ID) {
+		return false, nil
+	}
 	if s.shutdown && request.Method != "exit" {
 		if len(request.ID) == 0 || bytes.Equal(request.ID, []byte("null")) {
 			return false, nil
@@ -504,7 +513,8 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Root: root, Text: []byte(params.TextDocument.Text),
 		Index:   coresource.NewLineIndex(params.TextDocument.Text),
-		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names, ready: make(chan struct{}),
+		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names,
+		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: s.projectRevision,
 	}
 	if previous := s.document(doc.URI); previous != nil && previous.cancel != nil {
@@ -578,7 +588,8 @@ func (s *server) didChange(raw json.RawMessage) error {
 	}
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text, Index: index,
-		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names, ready: make(chan struct{}),
+		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
+		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: doc.Revision,
 	}
 	var accepted bool
@@ -641,7 +652,8 @@ func (s *server) reloadProjects() error {
 		}
 		next := &document{
 			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Index: doc.Index, Version: doc.Version,
-			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision, ready: make(chan struct{}),
+			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision,
+			ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		}
 		s.mu.Lock()
 		if s.documents[doc.URI] == doc {
@@ -680,7 +692,8 @@ func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, d
 		queue.active.cancel()
 		if queue.pending != nil {
 			queue.pending.cancel()
-			close(queue.pending.doc.ready)
+			queue.pending.doc.markAnalysisReady()
+			queue.pending.doc.markFullReady()
 		}
 		queue.pending = request
 		s.mu.Unlock()
@@ -712,7 +725,8 @@ func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, d
 
 func (s *server) runPublish(request *publishRequest) {
 	defer request.cancel()
-	defer close(request.doc.ready)
+	defer request.doc.markAnalysisReady()
+	defer request.doc.markFullReady()
 	if request.delay > 0 {
 		timer := time.NewTimer(request.delay)
 		defer timer.Stop()
@@ -722,7 +736,13 @@ func (s *server) runPublish(request *publishRequest) {
 			return
 		}
 	}
-	_ = s.publish(request.ctx, request.doc, request.snapshot)
+	if err := s.publish(request.ctx, request.doc, request.snapshot); err != nil {
+		return
+	}
+	request.doc.markFullReady()
+	if s.document(request.doc.URI) == request.doc {
+		s.requestDiagnosticRefresh()
+	}
 }
 
 func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Snapshot) error {
@@ -735,7 +755,16 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	if analysisErr != nil {
 		return analysisErr
 	}
-	diagnostics, err := lintDocument(doc, s.parseCache, shared)
+	if ctx.Err() != nil || s.document(doc.URI) != doc {
+		return ctx.Err()
+	}
+	doc.Analysis = shared
+	doc.markAnalysisReady()
+	lintFn := s.lint
+	if lintFn == nil {
+		lintFn = lintDocument
+	}
+	diagnostics, err := lintFn(doc, s.parseCache, shared)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -744,11 +773,34 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
-	doc.Analysis = shared
 	if ctx.Err() != nil || s.document(doc.URI) != doc {
 		return ctx.Err()
 	}
 	return nil
+}
+
+func (d *document) markAnalysisReady() {
+	if d != nil && d.analysisReady != nil {
+		d.analysisOnce.Do(func() { close(d.analysisReady) })
+	}
+}
+
+func (d *document) fullReady() bool {
+	if d == nil || d.ready == nil {
+		return true
+	}
+	select {
+	case <-d.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *document) markFullReady() {
+	if d != nil && d.ready != nil {
+		d.fullOnce.Do(func() { close(d.ready) })
+	}
 }
 
 func reconcileDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result) []diagnostic.Diagnostic {
@@ -807,11 +859,29 @@ func (s *server) document(uri string) *document {
 }
 
 func (s *server) readyDocument(uri string) *document {
-	doc := s.document(uri)
-	if doc != nil && doc.ready != nil {
-		<-doc.ready
+	for {
+		doc := s.document(uri)
+		if doc == nil || doc.analysisReady == nil {
+			return doc
+		}
+		<-doc.analysisReady
+		if s.document(uri) == doc {
+			return doc
+		}
 	}
-	return doc
+}
+
+func (s *server) fullReadyDocument(uri string) *document {
+	for {
+		doc := s.document(uri)
+		if doc == nil || doc.ready == nil {
+			return doc
+		}
+		<-doc.ready
+		if s.document(uri) == doc {
+			return doc
+		}
+	}
 }
 
 func (s *server) documentSymbols(id, raw json.RawMessage) error {
@@ -1465,7 +1535,7 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	doc := s.readyDocument(params.TextDocument.URI)
+	doc := s.fullReadyDocument(params.TextDocument.URI)
 	actions := make([]map[string]any, 0)
 	if doc != nil {
 		for _, finding := range doc.Diagnostics {
@@ -1680,6 +1750,14 @@ func (s *server) respond(id json.RawMessage, result any) error {
 
 func (s *server) respondError(id json.RawMessage, code int, message string) error {
 	return s.write(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}})
+}
+
+func (s *server) requestDiagnosticRefresh() {
+	if s.out == nil {
+		return
+	}
+	id := s.nextRequestID.Add(1)
+	_ = s.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": "workspace/diagnostic/refresh"})
 }
 
 func (s *server) write(value any) error {

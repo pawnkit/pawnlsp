@@ -4,7 +4,7 @@ Run the large-file edit benchmarks with:
 
 ```sh
 go test -run '^$' \
-  -bench 'Benchmark(Full|Incremental)DidChangeToDiagnostics50K$' \
+  -bench 'Benchmark(Full|Incremental)DidChangeTo(Analysis|Diagnostics)50K$' \
   -benchmem -benchtime=1x -count=3 ./lsp
 ```
 
@@ -39,6 +39,11 @@ One-pass scaling with pawn-analysis v0.4.0 and pawnlint v1.2.0:
 These figures include the 150 ms typing debounce. They are a diagnostic
 baseline, not the target: the 50,000-line case still needs to fall below
 300 ms.
+
+With pawn-analysis v0.4.1 and pawnlint v1.2.1, the 50,000-line fixture reaches
+editor analysis in 352–414 ms and full lint diagnostics in 520–560 ms.
+Hover, completion, navigation, and document symbols can use the earlier result.
+The client refreshes diagnostics when full lint finishes.
 
 Owned analysis snapshots remove one full-file copy from each editor revision.
 This is visible in allocations but does not remove the parser and lint work

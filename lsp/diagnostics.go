@@ -27,17 +27,22 @@ func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
 	if doc == nil {
 		return s.respond(id, map[string]any{"kind": "full", "items": []any{}})
 	}
-	resultID := documentDiagnosticResultID(doc)
+	full := doc.fullReady()
+	resultID := documentDiagnosticResultID(doc, full)
 	if params.PreviousResultID == resultID {
 		return s.respond(id, map[string]any{"kind": "unchanged", "resultId": resultID})
 	}
 	return s.respond(id, map[string]any{
-		"kind": "full", "resultId": resultID, "items": s.documentDiagnosticItems(doc),
+		"kind": "full", "resultId": resultID, "items": s.documentDiagnosticItems(doc, full),
 	})
 }
 
-func documentDiagnosticResultID(doc *document) string {
-	return fmt.Sprintf("%d:%d", doc.Revision, doc.Version)
+func documentDiagnosticResultID(doc *document, full bool) string {
+	stage := "analysis"
+	if full {
+		stage = "full"
+	}
+	return fmt.Sprintf("%d:%d:%s", doc.Revision, doc.Version, stage)
 }
 
 func (s *server) workspaceDiagnostics(id json.RawMessage) error {
@@ -153,25 +158,31 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 	return items
 }
 
-func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
+func (s *server) documentDiagnosticItems(doc *document, includeLint bool) []lspDiagnostic {
 	index := doc.lineIndex()
-	items := make([]lspDiagnostic, 0, len(doc.Diagnostics))
-	for _, finding := range doc.Diagnostics {
-		var documentation *lspCodeDescription
-		if strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
-			documentation = analysisDiagnosticDocumentation("")
-		}
-		if s.rules != nil {
-			if _, ok := s.rules.Lookup(finding.RuleID); ok {
-				documentation = diagnosticDocumentation("https://github.com/pawnkit/pawnlint/blob/main/docs/rules/" + finding.RuleID + ".md")
+	capacity := 0
+	if includeLint {
+		capacity = len(doc.Diagnostics)
+	}
+	items := make([]lspDiagnostic, 0, capacity)
+	if includeLint {
+		for _, finding := range doc.Diagnostics {
+			var documentation *lspCodeDescription
+			if strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
+				documentation = analysisDiagnosticDocumentation("")
 			}
+			if s.rules != nil {
+				if _, ok := s.rules.Lookup(finding.RuleID); ok {
+					documentation = diagnosticDocumentation("https://github.com/pawnkit/pawnlint/blob/main/docs/rules/" + finding.RuleID + ".md")
+				}
+			}
+			items = append(items, lspDiagnostic{
+				Range: offsetRangeWithIndex(index, finding.Range.Start.Offset, finding.Range.End.Offset), Severity: lspSeverity(finding.Severity),
+				Code: finding.RuleID, CodeDescription: documentation,
+				Source: "pawnlint", Message: finding.Message,
+				RelatedInformation: lintRelatedInformationWithIndex(doc.URI, index, finding),
+			})
 		}
-		items = append(items, lspDiagnostic{
-			Range: offsetRangeWithIndex(index, finding.Range.Start.Offset, finding.Range.End.Offset), Severity: lspSeverity(finding.Severity),
-			Code: finding.RuleID, CodeDescription: documentation,
-			Source: "pawnlint", Message: finding.Message,
-			RelatedInformation: lintRelatedInformationWithIndex(doc.URI, index, finding),
-		})
 	}
 	items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.Text, index)...)
 	return dedupeDiagnostics(items)

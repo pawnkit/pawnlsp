@@ -36,18 +36,22 @@ func BenchmarkFullDidChangeToDiagnostics50K(b *testing.B) {
 		}
 		b.StartTimer()
 
-		runBenchmarkChange(b, server, doc.URI, version, params)
+		runBenchmarkChange(b, server, doc.URI, version, params, true)
 	}
 }
 
 func BenchmarkIncrementalDidChangeToDiagnostics50K(b *testing.B) {
-	benchmarkIncrementalDidChange(b, 50_000)
+	benchmarkIncrementalDidChange(b, 50_000, true)
+}
+
+func BenchmarkIncrementalDidChangeToAnalysis50K(b *testing.B) {
+	benchmarkIncrementalDidChange(b, 50_000, false)
 }
 
 func BenchmarkIncrementalDidChangeScaling(b *testing.B) {
 	for _, lines := range []int{10_000, 25_000, 50_000, 100_000} {
 		b.Run(strconv.Itoa(lines), func(b *testing.B) {
-			benchmarkIncrementalDidChange(b, lines)
+			benchmarkIncrementalDidChange(b, lines, true)
 		})
 	}
 }
@@ -58,11 +62,11 @@ func BenchmarkDocumentDiagnostics50K(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(text)))
 	for b.Loop() {
-		_ = server.documentDiagnosticItems(doc)
+		_ = server.documentDiagnosticItems(doc, true)
 	}
 }
 
-func benchmarkIncrementalDidChange(b *testing.B, lines int) {
+func benchmarkIncrementalDidChange(b *testing.B, lines int, full bool) {
 	b.Helper()
 	server, doc, text := benchmarkLSPServer(b, lines)
 	editOffset := strings.LastIndex(string(text), "return 0")
@@ -88,7 +92,7 @@ func benchmarkIncrementalDidChange(b *testing.B, lines int) {
 		}
 		b.StartTimer()
 
-		runBenchmarkChange(b, server, doc.URI, version, params)
+		runBenchmarkChange(b, server, doc.URI, version, params, full)
 	}
 }
 
@@ -115,12 +119,16 @@ func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 	return server, doc, text
 }
 
-func runBenchmarkChange(b *testing.B, server *server, uri string, version int, params []byte) {
+func runBenchmarkChange(b *testing.B, server *server, uri string, version int, params []byte, full bool) {
 	b.Helper()
 	if err := server.didChange(params); err != nil {
 		b.Fatal(err)
 	}
-	if current := server.readyDocument(uri); current == nil || current.Version != version || current.Analysis == nil {
+	current := server.readyDocument(uri)
+	if full {
+		current = server.fullReadyDocument(uri)
+	}
+	if current == nil || current.Version != version || current.Analysis == nil {
 		b.Fatalf("version %d was not analyzed", version)
 	}
 }

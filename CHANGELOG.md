@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.29.0 - 2026-07-26
+
+### Changed
+
+- Made analysis available to editor features before full lint completes.
+- Refreshed pull diagnostics when full lint becomes ready.
+
 ## 0.28.4 - 2026-07-26
 
 ### Changed
