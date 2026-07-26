@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.27.4 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.3.1 and pawnlint v1.2.0.
+- Reduced tag-check allocations by reusing shared symbol indexes.
+
 ## 0.27.3 - 2026-07-26
 
 ### Changed
