@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawn-analysis/query"
 	coresource "github.com/pawnkit/pawnkit-core/source"
@@ -46,6 +48,44 @@ func BenchmarkIncrementalDidChangeToDiagnostics50K(b *testing.B) {
 
 func BenchmarkIncrementalDidChangeToAnalysis50K(b *testing.B) {
 	benchmarkIncrementalDidChange(b, 50_000, false)
+}
+
+func BenchmarkIncrementalDidChangeStages50K(b *testing.B) {
+	server, doc, text := benchmarkLSPServer(b, 50_000)
+	editOffset := strings.LastIndex(string(text), "return 0")
+	line := strings.Count(string(text[:editOffset]), "\n")
+	durations := make(map[analysis.Stage]time.Duration)
+	server.analysisTrace = func(_ string, _ int, event analysis.TraceEvent) {
+		durations[event.Stage] += event.Duration
+	}
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for iteration := 0; b.Loop(); iteration++ {
+		b.StopTimer()
+		version := iteration + 2
+		params, err := json.Marshal(map[string]any{
+			"textDocument": map[string]any{"uri": doc.URI, "version": version},
+			"contentChanges": []map[string]any{{
+				"range": map[string]any{
+					"start": map[string]any{"line": line, "character": 16},
+					"end":   map[string]any{"line": line, "character": 17},
+				},
+				"text": strconv.Itoa(iteration % 10),
+			}},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+		runBenchmarkChange(b, server, doc.URI, version, params, false)
+		b.StopTimer()
+		server.fullReadyDocument(doc.URI)
+		b.StartTimer()
+	}
+	for stage, duration := range durations {
+		b.ReportMetric(float64(duration.Nanoseconds())/float64(b.N), string(stage)+"-ns/op")
+	}
 }
 
 func BenchmarkIncrementalDidChangeScaling(b *testing.B) {

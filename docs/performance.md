@@ -96,3 +96,14 @@ PAWNKIT_ANALYSIS_TRACE=1 pawnlsp
 
 The trace includes the document version, duration, cancellation state, and
 reuse count. Leave it disabled during normal editing.
+
+Run the matching benchmark with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkIncrementalDidChangeStages50K$' \
+  -benchmem -benchtime=1x ./lsp
+```
+
+Concurrent original and expanded parsing reduced this traced fixture from
+453–485 ms to 382–423 ms. Symbol construction remains sequential because
+running both builders together increased memory contention.

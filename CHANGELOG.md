@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.30.1 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.6.2 for concurrent large-file parsing.
+- Added a benchmark that reports each analysis stage separately.
+
 ## 0.30.0 - 2026-07-26
 
 ### Added
