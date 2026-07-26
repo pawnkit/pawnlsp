@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.29.2 - 2026-07-26
+
+### Changed
+
+- Updated to pawnlint v1.3.0 for faster full diagnostics.
+
 ## 0.29.1 - 2026-07-26
 
 ### Changed
