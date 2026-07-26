@@ -690,8 +690,10 @@ func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, d
 	s.mu.Unlock()
 
 	s.workers.Go(func() {
+		defer cancel()
 		for current := request; current != nil; {
 			s.runPublish(current)
+			current.cancel()
 
 			s.mu.Lock()
 			queue := s.publishes[doc.URI]

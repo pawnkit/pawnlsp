@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.27.5 - 2026-07-26
+
+### Fixed
+
+- Released diagnostic worker contexts after each run.
+- Restored compatibility with the CI-pinned linter.
+
 ## 0.27.4 - 2026-07-26
 
 ### Changed
