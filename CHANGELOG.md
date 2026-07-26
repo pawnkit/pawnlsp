@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.5 - 2026-07-26
+
+### Performance
+
+- Stop symbol construction for obsolete document revisions.
+
 ## 0.32.4 - 2026-07-26
 
 ### Performance
