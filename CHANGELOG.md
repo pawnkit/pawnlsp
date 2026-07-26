@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.2 - 2026-07-26
+
+### Performance
+
+- Stop parsing obsolete document revisions after cancellation.
+
 ## 0.32.1 - 2026-07-26
 
 ### Fixed
