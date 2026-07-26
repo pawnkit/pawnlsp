@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -97,6 +98,9 @@ func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 		tokenCache: preprocess.NewTokenCache(),
 		rules:      lintrules.Default(),
 		workspaces: make(map[string]*workspaceIndex),
+	}
+	if err := server.publish(context.Background(), doc, server.snapshot); err != nil {
+		b.Fatal(err)
 	}
 	return server, doc, text
 }

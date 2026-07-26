@@ -9,8 +9,9 @@ go test -run '^$' \
 ```
 
 The fixture is generated in memory. It contains about 50,000 lines and 940 KB
-of functions, local variables, references, and control flow. Each iteration
-changes one character and waits for diagnostics.
+of functions, local variables, references, and control flow. Setup runs the
+initial diagnostics, then each measured iteration changes one character and
+waits for the next result.
 
 ## July 26 baseline
 
@@ -26,14 +27,14 @@ Reference system:
 | pawn-analysis v0.1.19 | full document | 658–672 ms | 466 MB | 1.17 million |
 | pawn-analysis v0.1.19 | incremental range | 667–700 ms | 467 MB | 1.17 million |
 
-One-pass scaling after the scheduler and line-index changes:
+One-pass scaling with pawn-analysis v0.3.0:
 
 | Lines | Time | Allocated | Allocations |
 |---:|---:|---:|---:|
-| 10,000 | 262 ms | 142 MB | 319,000 |
-| 25,000 | 425 ms | 267 MB | 648,000 |
-| 50,000 | 750 ms | 467 MB | 1.17 million |
-| 100,000 | 1.50 s | 868 MB | 2.22 million |
+| 10,000 | 231–245 ms | 116 MB | 275,000 |
+| 25,000 | 314–325 ms | 204 MB | 539,000 |
+| 50,000 | 513–540 ms | 340 MB | 952,000 |
+| 100,000 | 943–946 ms | 614 MB | 1.78 million |
 
 These figures include the 150 ms typing debounce. They are a diagnostic
 baseline, not the target: the 50,000-line case still needs to fall below

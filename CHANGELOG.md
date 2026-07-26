@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.27.3 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.3.0 for selective function CFG reuse.
+- Primed the performance benchmark before measuring document changes.
+
 ## 0.27.2 - 2026-07-26
 
 ### Changed
