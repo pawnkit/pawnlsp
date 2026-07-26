@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.8 - 2026-07-26
+
+### Performance
+
+- Stop tokenizing obsolete document revisions and included files.
+
 ## 0.32.7 - 2026-07-26
 
 ### Performance
