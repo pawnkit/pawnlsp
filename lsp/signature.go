@@ -19,7 +19,7 @@ func (s *server) signatureHelp(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, nil)
 	}
-	name, opening, ok := callAt(doc.Text, int(offset))
+	name, opening, ok := callAt(doc.text(), int(offset))
 	if !ok {
 		return s.respond(id, nil)
 	}
@@ -27,7 +27,7 @@ func (s *server) signatureHelp(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, nil)
 	}
-	active := activeParameter(doc.Text, opening+1, int(offset))
+	active := activeParameter(doc.text(), opening+1, int(offset))
 	if len(signature.Parameters) > 0 && active >= len(signature.Parameters) {
 		active = len(signature.Parameters) - 1
 	}

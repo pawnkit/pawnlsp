@@ -19,12 +19,12 @@ func (s *server) prepareRename(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, nil)
 	}
-	name, start, end := identifierAt(doc.Text, int(offset))
+	name, start, end := identifierAt(doc.text(), int(offset))
 	if _, _, ok := s.renameTarget(doc, offset, name); !ok {
 		return s.respond(id, nil)
 	}
 	return s.respond(id, map[string]any{
-		"range": offsetRange(doc.Text, start, end), "placeholder": name,
+		"range": offsetRange(doc.text(), start, end), "placeholder": name,
 	})
 }
 
@@ -47,7 +47,7 @@ func (s *server) rename(id, raw json.RawMessage) error {
 	if !ok {
 		return errors.New("symbol is not available")
 	}
-	name, _, _ := identifierAt(doc.Text, int(offset))
+	name, _, _ := identifierAt(doc.text(), int(offset))
 	item, global, ok := s.renameTarget(doc, offset, name)
 	if !ok {
 		return fmt.Errorf("%q cannot be renamed", name)

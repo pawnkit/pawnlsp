@@ -30,7 +30,7 @@ func (s *server) prepareCallHierarchy(id, raw json.RawMessage) error {
 	if !ok || !item.Kind.IsCallable() {
 		return s.respond(id, []any{})
 	}
-	return s.respond(id, []any{callHierarchyItem(doc.URI, doc.Text, item)})
+	return s.respond(id, []any{callHierarchyItem(doc.URI, doc.text(), item)})
 }
 
 func (s *server) incomingCalls(id, raw json.RawMessage) error {

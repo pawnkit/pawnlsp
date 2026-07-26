@@ -61,7 +61,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 	open := make(map[string][]byte)
 	for _, current := range s.documents {
 		if current.Root == doc.Root {
-			open[current.Path] = append([]byte(nil), current.Text...)
+			open[current.Path] = append([]byte(nil), current.text()...)
 		}
 	}
 	s.mu.Unlock()

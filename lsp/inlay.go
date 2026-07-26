@@ -59,7 +59,7 @@ func (s *server) inlayHints(id, raw json.RawMessage) error {
 				continue
 			}
 			hints = append(hints, map[string]any{
-				"position":     offsetPosition(doc.Text, argument.Range().Start),
+				"position":     offsetPosition(doc.text(), argument.Range().Start),
 				"label":        name + ":",
 				"kind":         2,
 				"paddingRight": true,

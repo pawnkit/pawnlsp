@@ -59,23 +59,23 @@ func (s *server) onTypeFormatting(id, raw json.RawMessage) error {
 }
 
 func (s *server) formatSelectedRange(id json.RawMessage, doc *document, start, end int, options formattingOptions) error {
-	result, err := pawnfmt.FormatRange(doc.Text, start, end, pawnfmt.Options{
+	result, err := pawnfmt.FormatRange(doc.text(), start, end, pawnfmt.Options{
 		TabSize: options.TabSize, UseTabs: !options.InsertSpaces,
 	})
 	if err != nil {
 		return s.respondError(id, -32603, err.Error())
 	}
-	suffixLength := len(doc.Text) - result.FormattedRange.End
+	suffixLength := len(doc.text()) - result.FormattedRange.End
 	formattedEnd := len(result.Source) - suffixLength
 	if formattedEnd < result.FormattedRange.Start {
 		return s.respondError(id, -32603, "formatter returned an invalid range")
 	}
 	replacement := result.Source[result.FormattedRange.Start:formattedEnd]
-	original := doc.Text[result.FormattedRange.Start:result.FormattedRange.End]
+	original := doc.text()[result.FormattedRange.Start:result.FormattedRange.End]
 	if string(replacement) == string(original) {
 		return s.respond(id, []textEdit{})
 	}
 	return s.respond(id, []textEdit{{
-		Range: offsetRange(doc.Text, result.FormattedRange.Start, result.FormattedRange.End), NewText: string(replacement),
+		Range: offsetRange(doc.text(), result.FormattedRange.Start, result.FormattedRange.End), NewText: string(replacement),
 	}})
 }

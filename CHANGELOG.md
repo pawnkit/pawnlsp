@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.32.0 - 2026-07-26
+
+### Performance
+
+- Keep range edits in persistent buffers until analysis or an editor request
+  needs contiguous text.
+
 ## 0.31.1 - 2026-07-26
 
 ### Performance

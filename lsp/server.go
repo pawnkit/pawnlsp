@@ -48,6 +48,7 @@ type document struct {
 	Path          string
 	Root          string
 	Text          []byte
+	Buffer        *coresource.TextBuffer
 	Index         *coresource.LineIndex
 	Version       int
 	Diagnostics   []diagnostic.Diagnostic
@@ -524,9 +525,10 @@ func (s *server) didOpen(raw json.RawMessage) error {
 		names = resolver
 	}
 	text := []byte(params.TextDocument.Text)
+	buffer := coresource.NewTextBuffer(text)
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Root: root, Text: text,
-		Index:   coresource.NewLineIndexBytes(text),
+		Buffer: buffer, Index: coresource.NewBufferedLineIndex(buffer),
 		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: s.projectRevision,
@@ -537,7 +539,9 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if s.snapshot == nil {
 		s.snapshot = query.New()
 	}
-	s.snapshot, _ = s.snapshot.UpdateOwned(query.Document{URI: coresource.URI(doc.URI), Text: doc.Text, Version: int64(doc.Version)})
+	s.snapshot, _ = s.snapshot.UpdateOwned(query.Document{
+		URI: coresource.URI(doc.URI), Buffer: doc.Buffer, Version: int64(doc.Version),
+	})
 	s.mu.Lock()
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
@@ -570,12 +574,14 @@ func (s *server) didChange(raw json.RawMessage) error {
 	if doc.cancel != nil {
 		doc.cancel()
 	}
-	text := doc.Text
 	index := doc.lineIndex()
+	if index.TextBuffer() == nil {
+		index = coresource.NewBufferedLineIndex(coresource.NewTextBuffer(doc.text()))
+	}
 	for _, change := range params.ContentChanges {
 		if change.Range == nil {
-			text = []byte(change.Text)
-			index = coresource.NewLineIndexBytes(text)
+			buffer := coresource.NewTextBuffer([]byte(change.Text))
+			index = coresource.NewBufferedLineIndex(buffer)
 			continue
 		}
 		start, err := index.Offset(coresource.Position{
@@ -598,16 +604,17 @@ func (s *server) didChange(raw json.RawMessage) error {
 			return fmt.Errorf("apply change: %w", err)
 		}
 		index = nextIndex
-		text = index.Bytes()
 	}
 	next := &document{
-		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text, Index: index,
+		URI: doc.URI, Path: doc.Path, Root: doc.Root, Buffer: index.TextBuffer(), Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: doc.Revision,
 	}
 	var accepted bool
-	s.snapshot, accepted = s.snapshot.UpdateOwned(query.Document{URI: coresource.URI(next.URI), Text: next.Text, Version: int64(next.Version)})
+	s.snapshot, accepted = s.snapshot.UpdateOwned(query.Document{
+		URI: coresource.URI(next.URI), Buffer: next.Buffer, Version: int64(next.Version),
+	})
 	if !accepted {
 		return nil
 	}
@@ -665,7 +672,7 @@ func (s *server) reloadProjects() error {
 			names = resolver
 		}
 		next := &document{
-			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Index: doc.Index, Version: doc.Version,
+			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Buffer: doc.Buffer, Index: doc.Index, Version: doc.Version,
 			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision,
 			ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		}
@@ -686,7 +693,23 @@ func (d *document) lineIndex() *coresource.LineIndex {
 	if d.Index != nil {
 		return d.Index
 	}
+	if d.Buffer != nil {
+		return coresource.NewBufferedLineIndex(d.Buffer)
+	}
 	return coresource.NewLineIndexBytes(d.Text)
+}
+
+func (d *document) text() []byte {
+	if d == nil {
+		return nil
+	}
+	if d.Text != nil {
+		return d.Text
+	}
+	if d.Buffer != nil {
+		return d.Buffer.Bytes()
+	}
+	return nil
 }
 
 func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
@@ -918,7 +941,7 @@ func (s *server) documentSymbols(id, raw json.RawMessage) error {
 	items := make([]map[string]any, 0)
 	if doc != nil && doc.Analysis != nil && doc.Analysis.Symbols != nil {
 		for _, item := range doc.Analysis.Symbols.Symbols {
-			rng := offsetRange(doc.Text, int(item.Span.Start), int(item.Span.End))
+			rng := offsetRange(doc.text(), int(item.Span.Start), int(item.Span.End))
 			items = append(items, map[string]any{
 				"name": item.Name, "kind": symbolKind(item.Kind),
 				"range": rng, "selectionRange": rng,
@@ -982,7 +1005,7 @@ func (s *server) definition(id, raw json.RawMessage) error {
 		}
 		return s.respond(id, analysisLocation(doc, decl.Span))
 	}
-	name, _, _ := identifierAt(doc.Text, int(offset))
+	name, _, _ := identifierAt(doc.text(), int(offset))
 	occurrences := s.workspaceOccurrences(name)
 	if workspaceDeclarationCount(occurrences) == 1 {
 		for _, occurrence := range occurrences {
@@ -1013,24 +1036,24 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		return s.respond(id, nil)
 	}
 	if include, ok := includeAt(doc.Analysis, int(offset)); ok {
-		start, end := includePathRange(doc.Text, include)
+		start, end := includePathRange(doc.text(), include)
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": includeHover(include)},
-			"range":    offsetRange(doc.Text, start, end),
+			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
 	item, ok := symbolAt(navigationTable(doc.Analysis), doc.Analysis.File, offset)
 	if ok {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": hoverText(doc, item)},
-			"range":    offsetRange(doc.Text, int(item.Span.Start), int(item.Span.End)),
+			"range":    offsetRange(doc.text(), int(item.Span.Start), int(item.Span.End)),
 		})
 	}
-	name, start, end := identifierAt(doc.Text, int(offset))
+	name, start, end := identifierAt(doc.text(), int(offset))
 	if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": macroHover(doc.Analysis.Preprocess, macro)},
-			"range":    offsetRange(doc.Text, start, end),
+			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
 	occurrences := s.workspaceOccurrences(name)
@@ -1043,7 +1066,7 @@ func (s *server) hover(id, raw json.RawMessage) error {
 				}
 				return s.respond(id, map[string]any{
 					"contents": map[string]any{"kind": "markdown", "value": contents},
-					"range":    offsetRange(doc.Text, start, end),
+					"range":    offsetRange(doc.text(), start, end),
 				})
 			}
 		}
@@ -1054,7 +1077,7 @@ func (s *server) hover(id, raw json.RawMessage) error {
 	}
 	return s.respond(id, map[string]any{
 		"contents": map[string]any{"kind": "markdown", "value": apiHover(entry)},
-		"range":    offsetRange(doc.Text, start, end),
+		"range":    offsetRange(doc.text(), start, end),
 	})
 }
 
@@ -1465,7 +1488,7 @@ func (s *server) references(id, raw json.RawMessage) error {
 			global = scope.Kind == symbol.ScopeFile
 		}
 	} else {
-		name, _, _ = identifierAt(doc.Text, int(offset))
+		name, _, _ = identifierAt(doc.text(), int(offset))
 		global = name != ""
 	}
 	if global {
@@ -1513,7 +1536,7 @@ func analysisLocation(doc *document, span coresource.Span) map[string]any {
 }
 
 func spanDocument(doc *document, span coresource.Span) (string, []byte) {
-	uri, text := doc.URI, doc.Text
+	uri, text := doc.URI, doc.text()
 	if span.File != doc.Analysis.File {
 		if resolved, ok := doc.Analysis.Registry.URI(span.File); ok {
 			uri = resolved.String()
@@ -1544,7 +1567,7 @@ func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
 }
 
 func lintDocument(doc *document, cache *lintproject.ParseCache, shared *analysis.Result) ([]diagnostic.Diagnostic, error) {
-	return editor.DiagnoseWithCache(doc.Path, doc.Text, filepath.Dir(doc.Path), cache, shared)
+	return editor.DiagnoseWithCache(doc.Path, doc.text(), filepath.Dir(doc.Path), cache, shared)
 }
 
 func (s *server) codeActions(id, raw json.RawMessage) error {
@@ -1569,7 +1592,7 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 			if finding.Fix != nil && safeFix(s.rules, finding.RuleID) {
 				edits := make([]textEdit, 0, len(finding.Fix.Edits))
 				for _, edit := range finding.Fix.Edits {
-					edits = append(edits, textEdit{Range: offsetRange(doc.Text, edit.Range.Start.Offset, edit.Range.End.Offset), NewText: edit.NewText})
+					edits = append(edits, textEdit{Range: offsetRange(doc.text(), edit.Range.Start.Offset, edit.Range.End.Offset), NewText: edit.NewText})
 				}
 				actions = append(actions, map[string]any{
 					"title":       finding.Fix.Description,
@@ -1581,7 +1604,7 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 			actions = append(actions, map[string]any{
 				"title": "Suppress " + finding.RuleID + " on this line",
 				"kind":  "quickfix",
-				"edit":  map[string]any{"changes": map[string]any{doc.URI: []textEdit{suppressionEdit(doc.Text, finding)}}},
+				"edit":  map[string]any{"changes": map[string]any{doc.URI: []textEdit{suppressionEdit(doc.text(), finding)}}},
 			})
 			actions = append(actions, map[string]any{
 				"title":   "Explain " + finding.RuleID,
@@ -1637,16 +1660,16 @@ func (s *server) formatting(id, raw json.RawMessage) error {
 	if doc == nil {
 		return s.respond(id, []textEdit{})
 	}
-	formatted, err := pawnfmt.Format(doc.Text, pawnfmt.Options{
+	formatted, err := pawnfmt.Format(doc.text(), pawnfmt.Options{
 		TabSize: params.Options.TabSize, UseTabs: !params.Options.InsertSpaces,
 	})
 	if err != nil {
 		return s.respondError(id, -32603, err.Error())
 	}
-	if bytes.Equal(formatted, doc.Text) {
+	if bytes.Equal(formatted, doc.text()) {
 		return s.respond(id, []textEdit{})
 	}
-	return s.respond(id, []textEdit{{Range: offsetRange(doc.Text, 0, len(doc.Text)), NewText: string(formatted)}})
+	return s.respond(id, []textEdit{{Range: offsetRange(doc.text(), 0, len(doc.text())), NewText: string(formatted)}})
 }
 
 func diagnosticRange(source []byte, finding diagnostic.Diagnostic) lspRange {

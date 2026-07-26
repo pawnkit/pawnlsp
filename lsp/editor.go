@@ -22,7 +22,7 @@ func (s *server) documentHighlights(id, raw json.RawMessage) error {
 	}
 	table := navigationTable(doc.Analysis)
 	item, found := symbolAt(table, doc.Analysis.File, offset)
-	name, _, _ := identifierAt(doc.Text, int(offset))
+	name, _, _ := identifierAt(doc.text(), int(offset))
 	global := !found
 	if found {
 		name = item.Name
@@ -47,12 +47,12 @@ func (s *server) documentHighlights(id, raw json.RawMessage) error {
 		return s.respond(id, highlights)
 	}
 	highlights = append(highlights, map[string]any{
-		"range": offsetRange(doc.Text, int(item.Span.Start), int(item.Span.End)), "kind": 1,
+		"range": offsetRange(doc.text(), int(item.Span.Start), int(item.Span.End)), "kind": 1,
 	})
 	for _, reference := range table.References {
 		if reference.Resolved == item.ID && reference.Span.File == doc.Analysis.File {
 			highlights = append(highlights, map[string]any{
-				"range": offsetRange(doc.Text, int(reference.Span.Start), int(reference.Span.End)), "kind": 2,
+				"range": offsetRange(doc.text(), int(reference.Span.Start), int(reference.Span.End)), "kind": 2,
 			})
 		}
 	}
@@ -133,7 +133,7 @@ func (s *server) selectionRanges(id, raw json.RawMessage) error {
 		var parent any
 		for _, node := range slices.Backward(path) {
 			rng := node.Range()
-			item := map[string]any{"range": offsetRange(doc.Text, rng.Start, rng.End)}
+			item := map[string]any{"range": offsetRange(doc.text(), rng.Start, rng.End)}
 			if parent != nil {
 				item["parent"] = parent
 			}

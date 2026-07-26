@@ -145,14 +145,15 @@ func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 	b.Helper()
 	uri := coresource.FileURI("benchmark.pwn")
 	text := benchmarkGamemode(lines)
+	buffer := coresource.NewTextBuffer(text)
 	doc := &document{
-		URI: uri.String(), Path: "benchmark.pwn", Text: text, Version: 1,
-		Index: coresource.NewLineIndex(string(text)),
+		URI: uri.String(), Path: "benchmark.pwn", Text: text, Buffer: buffer, Version: 1,
+		Index: coresource.NewBufferedLineIndex(buffer),
 		ready: closedChannel(),
 	}
 	server := &server{
 		documents:  map[string]*document{doc.URI: doc},
-		snapshot:   query.New(query.Document{URI: uri, Text: text, Version: 1}),
+		snapshot:   query.New(query.Document{URI: uri, Buffer: buffer, Version: 1}),
 		parseCache: lintproject.NewParseCache(),
 		tokenCache: preprocess.NewTokenCache(),
 		rules:      lintrules.Default(),

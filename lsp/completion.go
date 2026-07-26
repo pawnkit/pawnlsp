@@ -43,13 +43,13 @@ func (s *server) completion(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, []any{})
 	}
-	if context, ok := includeCompletionAt(doc.Text, int(offset)); ok {
+	if context, ok := includeCompletionAt(doc.text(), int(offset)); ok {
 		return s.respond(id, includeCompletionItems(doc, context))
 	}
-	if context, ok := directiveCompletionAt(doc.Text, int(offset)); ok {
-		return s.respond(id, directiveCompletionItems(doc.Text, context))
+	if context, ok := directiveCompletionAt(doc.text(), int(offset)); ok {
+		return s.respond(id, directiveCompletionItems(doc.text(), context))
 	}
-	prefix, _, _ := identifierAt(doc.Text, int(offset))
+	prefix, _, _ := identifierAt(doc.text(), int(offset))
 	items := completionItems(doc, prefix, int(offset))
 	items = s.workspaceCompletionItems(items, prefix)
 	items = apiCompletionItems(items, doc, prefix)
@@ -109,7 +109,7 @@ func includeCompletionItems(doc *document, context includeCompletionContext) []m
 		}
 		items = append(items, map[string]any{
 			"label": candidate.Path, "kind": kind, "detail": detail,
-			"textEdit": textEdit{Range: offsetRange(doc.Text, context.Start, context.End), NewText: candidate.Path},
+			"textEdit": textEdit{Range: offsetRange(doc.text(), context.Start, context.End), NewText: candidate.Path},
 		})
 	}
 	return items

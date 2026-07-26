@@ -29,7 +29,7 @@ func TestDidChangeRejectsStaleVersion(t *testing.T) {
 	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: []byte("main() {}"), Version: 2}
 	s := &server{
 		documents: map[string]*document{uri: doc},
-		snapshot:  query.New(query.Document{URI: coresource.URI(uri), Text: doc.Text, Version: 2}),
+		snapshot:  query.New(query.Document{URI: coresource.URI(uri), Text: doc.text(), Version: 2}),
 	}
 	params, _ := json.Marshal(map[string]any{
 		"textDocument":   map[string]any{"uri": uri, "version": 1},
@@ -38,7 +38,7 @@ func TestDidChangeRejectsStaleVersion(t *testing.T) {
 	if err := s.didChange(params); err != nil {
 		t.Fatal(err)
 	}
-	if string(doc.Text) != "main() {}" || doc.Version != 2 {
+	if string(doc.text()) != "main() {}" || doc.Version != 2 {
 		t.Fatalf("stale change applied: %+v", doc)
 	}
 }
@@ -68,7 +68,7 @@ func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
 
 	doc := s.readyDocument(uri)
 	wantText := fmt.Sprintf("main() { new value%d; }\n", lastVersion)
-	if doc == nil || doc.Version != lastVersion || string(doc.Text) != wantText {
+	if doc == nil || doc.Version != lastVersion || string(doc.text()) != wantText {
 		t.Fatalf("got %+v, want version=%d text=%q", doc, lastVersion, wantText)
 	}
 	if doc.Analysis == nil {
@@ -102,14 +102,15 @@ func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := s.document(uri)
-	if want := "main() { new answer = \"Pawn\"; }\n"; got == nil || string(got.Text) != want {
-		t.Fatalf("text = %q, want %q", got.Text, want)
+	if want := "main() { new answer = \"Pawn\"; }\n"; got == nil || string(got.text()) != want {
+		t.Fatalf("text = %q, want %q", got.text(), want)
 	}
 	if got.Index == nil || got.Index == index {
 		t.Fatal("change did not replace the document line index")
 	}
 	indexText := got.Index.Bytes()
-	if len(got.Text) == 0 || len(indexText) == 0 || &got.Text[0] != &indexText[0] {
+	textBytes := got.text()
+	if len(textBytes) == 0 || len(indexText) == 0 || &textBytes[0] != &indexText[0] {
 		t.Fatal("document and line index do not share the revision buffer")
 	}
 	if got.cancel != nil {

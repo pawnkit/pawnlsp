@@ -184,7 +184,7 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool) []lspD
 			})
 		}
 	}
-	items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.Text, index)...)
+	items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)...)
 	return dedupeDiagnostics(items)
 }
 
