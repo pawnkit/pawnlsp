@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.6 - 2026-07-26
+
+### Performance
+
+- Stop name resolution and tag checking for obsolete revisions.
+
 ## 0.32.5 - 2026-07-26
 
 ### Performance
