@@ -1,5 +1,7 @@
 # pawnlsp
 
+[![Maturity: preview](https://img.shields.io/badge/maturity-preview-blue)](.pawnkit/support.json)
+
 An LSP server for SA-MP/open.mp Pawn. It consumes shared PawnKit libraries for project discovery, analysis, API metadata, diagnostics, and fixes.
 
 ## Install

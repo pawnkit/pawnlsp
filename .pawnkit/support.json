@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "repository": "pawnkit/pawnlsp",
+  "maturity": "preview",
+  "platforms": ["linux-amd64", "windows-amd64", "darwin-arm64"],
+  "profiles": ["samp-037", "openmp"],
+  "compilers": [],
+  "contracts": [
+    { "name": "pawn-diagnostic", "major": 2 },
+    { "name": "pawn-project", "major": 1 }
+  ],
+  "limitations": [
+    "The compatibility smoke checks installation on all platforms; protocol tests run on Linux.",
+    "Workspace latency budgets are not enforced yet."
+  ]
+}
