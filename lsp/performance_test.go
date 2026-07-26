@@ -40,7 +40,20 @@ func BenchmarkFullDidChangeToDiagnostics50K(b *testing.B) {
 }
 
 func BenchmarkIncrementalDidChangeToDiagnostics50K(b *testing.B) {
-	server, doc, text := benchmarkLSPServer(b, 50_000)
+	benchmarkIncrementalDidChange(b, 50_000)
+}
+
+func BenchmarkIncrementalDidChangeScaling(b *testing.B) {
+	for _, lines := range []int{10_000, 25_000, 50_000, 100_000} {
+		b.Run(strconv.Itoa(lines), func(b *testing.B) {
+			benchmarkIncrementalDidChange(b, lines)
+		})
+	}
+}
+
+func benchmarkIncrementalDidChange(b *testing.B, lines int) {
+	b.Helper()
+	server, doc, text := benchmarkLSPServer(b, lines)
 	editOffset := strings.LastIndex(string(text), "return 0")
 	line := strings.Count(string(text[:editOffset]), "\n")
 

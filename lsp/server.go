@@ -59,6 +59,19 @@ type document struct {
 	cancel      context.CancelFunc
 }
 
+type publishRequest struct {
+	doc      *document
+	snapshot *query.Snapshot
+	delay    time.Duration
+	ctx      context.Context
+	cancel   context.CancelFunc
+}
+
+type publishQueue struct {
+	active  *publishRequest
+	pending *publishRequest
+}
+
 type server struct {
 	in              *bufio.Reader
 	out             io.Writer
@@ -75,6 +88,7 @@ type server struct {
 	projectRevision int64
 	parseCache      *lintproject.ParseCache
 	tokenCache      *preprocess.TokenCache
+	publishes       map[string]*publishQueue
 }
 
 const (
@@ -656,20 +670,57 @@ func (s *server) schedulePublish(doc *document, snapshot *query.Snapshot) {
 func (s *server) schedulePublishAfter(doc *document, snapshot *query.Snapshot, delay time.Duration) {
 	ctx, cancel := context.WithCancel(context.Background())
 	doc.cancel = cancel
+	request := &publishRequest{doc: doc, snapshot: snapshot, delay: delay, ctx: ctx, cancel: cancel}
+
+	s.mu.Lock()
+	if s.publishes == nil {
+		s.publishes = make(map[string]*publishQueue)
+	}
+	if queue := s.publishes[doc.URI]; queue != nil {
+		queue.active.cancel()
+		if queue.pending != nil {
+			queue.pending.cancel()
+			close(queue.pending.doc.ready)
+		}
+		queue.pending = request
+		s.mu.Unlock()
+		return
+	}
+	s.publishes[doc.URI] = &publishQueue{active: request}
+	s.mu.Unlock()
+
 	s.workers.Go(func() {
-		defer cancel()
-		defer close(doc.ready)
-		if delay > 0 {
-			timer := time.NewTimer(delay)
-			defer timer.Stop()
-			select {
-			case <-timer.C:
-			case <-ctx.Done():
+		for current := request; current != nil; {
+			s.runPublish(current)
+
+			s.mu.Lock()
+			queue := s.publishes[doc.URI]
+			if queue == nil || queue.pending == nil {
+				delete(s.publishes, doc.URI)
+				s.mu.Unlock()
 				return
 			}
+			current = queue.pending
+			queue.active = current
+			queue.pending = nil
+			s.mu.Unlock()
 		}
-		_ = s.publish(ctx, doc, snapshot)
 	})
+}
+
+func (s *server) runPublish(request *publishRequest) {
+	defer request.cancel()
+	defer close(request.doc.ready)
+	if request.delay > 0 {
+		timer := time.NewTimer(request.delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-request.ctx.Done():
+			return
+		}
+	}
+	_ = s.publish(request.ctx, request.doc, request.snapshot)
 }
 
 func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Snapshot) error {

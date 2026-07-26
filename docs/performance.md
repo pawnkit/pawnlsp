@@ -26,6 +26,19 @@ Reference system:
 | pawn-analysis v0.1.19 | full document | 658–672 ms | 466 MB | 1.17 million |
 | pawn-analysis v0.1.19 | incremental range | 667–700 ms | 467 MB | 1.17 million |
 
+One-pass scaling after the scheduler and line-index changes:
+
+| Lines | Time | Allocated | Allocations |
+|---:|---:|---:|---:|
+| 10,000 | 262 ms | 142 MB | 319,000 |
+| 25,000 | 425 ms | 267 MB | 648,000 |
+| 50,000 | 750 ms | 467 MB | 1.17 million |
+| 100,000 | 1.50 s | 868 MB | 2.22 million |
+
+These figures include the 150 ms typing debounce. They are a diagnostic
+baseline, not the target: the 50,000-line case still needs to fall below
+300 ms.
+
 The first CPU profile found repeated linear scans by declaration and reference
 span. Span indexes removed that bottleneck. The remaining edit still rebuilds
 the parser, preprocessor, semantic model, control-flow graphs, and lint model,
@@ -34,6 +47,9 @@ which explains why incremental transport alone has little effect.
 Workspace indexing uses a separate path. Pawn-analysis v0.1.20 reuses its
 prepared syntax and symbols when it completes workspace semantics instead of
 parsing every closed file twice.
+
+Rapid edits keep one active diagnostic run and replace a single pending run.
+Cancelled or superseded versions cannot publish results.
 
 Create profiles with:
 

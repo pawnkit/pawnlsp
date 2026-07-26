@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.27.2 - 2026-07-26
+
+### Changed
+
+- Kept at most one active and one pending diagnostic run per document.
+
 ## 0.27.1 - 2026-07-26
 
 ### Changed
