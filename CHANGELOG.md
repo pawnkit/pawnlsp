@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.10 - 2026-07-26
+
+### Performance
+
+- Reduced clean SAFW analysis from about 27 seconds to 9 seconds.
+
 ## 0.32.9 - 2026-07-26
 
 ### Fixed
