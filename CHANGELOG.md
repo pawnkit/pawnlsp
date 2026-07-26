@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.11 - 2026-07-26
+
+### Performance
+
+- Reuse expanded analysis after equivalent comment edits.
+
 ## 0.32.10 - 2026-07-26
 
 ### Performance
