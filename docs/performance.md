@@ -45,6 +45,10 @@ editor analysis in 352–414 ms and full lint diagnostics in 520–560 ms.
 Hover, completion, navigation, and document symbols can use the earlier result.
 The client refreshes diagnostics when full lint finishes.
 
+Pawn-analysis v0.4.3 reduces preprocessor allocation growth. The isolated
+analysis-ready benchmark allocates about 254 MB, while the full diagnostic path
+allocates about 305 MB.
+
 Owned analysis snapshots remove one full-file copy from each editor revision.
 This is visible in allocations but does not remove the parser and lint work
 that still dominates the benchmark.

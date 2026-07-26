@@ -93,6 +93,11 @@ func benchmarkIncrementalDidChange(b *testing.B, lines int, full bool) {
 		b.StartTimer()
 
 		runBenchmarkChange(b, server, doc.URI, version, params, full)
+		if !full {
+			b.StopTimer()
+			server.fullReadyDocument(doc.URI)
+			b.StartTimer()
+		}
 	}
 }
 

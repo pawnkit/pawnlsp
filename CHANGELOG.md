@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.29.1 - 2026-07-26
+
+### Changed
+
+- Updated to pawn-analysis v0.4.3 and pawnlint v1.2.3.
+- Kept analysis-ready benchmarks isolated from background lint work.
+
 ## 0.29.0 - 2026-07-26
 
 ### Changed
