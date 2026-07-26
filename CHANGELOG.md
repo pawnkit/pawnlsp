@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.4 - 2026-07-26
+
+### Performance
+
+- Skip remaining analysis stages when an obsolete revision is cancelled.
+
 ## 0.32.3 - 2026-07-26
 
 ### Performance
