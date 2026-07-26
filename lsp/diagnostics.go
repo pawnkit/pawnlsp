@@ -173,15 +173,21 @@ func (s *server) documentDiagnosticItems(doc *document) []lspDiagnostic {
 			RelatedInformation: lintRelatedInformationWithIndex(doc.URI, index, finding),
 		})
 	}
-	items = append(items, analysisDiagnosticItems(doc.Analysis, doc.Text)...)
+	items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.Text, index)...)
 	return dedupeDiagnostics(items)
 }
 
 func analysisDiagnosticItems(result *analysis.Result, text []byte) []lspDiagnostic {
+	return analysisDiagnosticItemsWithIndex(result, text, nil)
+}
+
+func analysisDiagnosticItemsWithIndex(result *analysis.Result, text []byte, index *coresource.LineIndex) []lspDiagnostic {
 	if result == nil {
 		return nil
 	}
-	index := coresource.NewLineIndex(string(text))
+	if index == nil {
+		index = coresource.NewLineIndex(string(text))
+	}
 	indexes := make(lineIndexSet, 1)
 	if result.Registry != nil {
 		if uri, ok := result.Registry.URI(result.File); ok {

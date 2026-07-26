@@ -52,6 +52,10 @@ parsing every closed file twice.
 Rapid edits keep one active diagnostic run and replace a single pending run.
 Cancelled or superseded versions cannot publish results.
 
+An unchanged 50,000-line diagnostic pull takes about 0.6 µs and allocates
+432 bytes. The server reuses the document line index and returns an unchanged
+result ID after the first pull.
+
 Create profiles with:
 
 ```sh

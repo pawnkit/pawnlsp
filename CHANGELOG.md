@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.28.1 - 2026-07-26
+
+### Changed
+
+- Reused the open document's line index when converting diagnostics.
+- Added a large-file diagnostic conversion benchmark.
+
 ## 0.28.0 - 2026-07-26
 
 ### Added

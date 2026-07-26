@@ -52,6 +52,16 @@ func BenchmarkIncrementalDidChangeScaling(b *testing.B) {
 	}
 }
 
+func BenchmarkDocumentDiagnostics50K(b *testing.B) {
+	server, doc, text := benchmarkLSPServer(b, 50_000)
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for b.Loop() {
+		_ = server.documentDiagnosticItems(doc)
+	}
+}
+
 func benchmarkIncrementalDidChange(b *testing.B, lines int) {
 	b.Helper()
 	server, doc, text := benchmarkLSPServer(b, lines)
