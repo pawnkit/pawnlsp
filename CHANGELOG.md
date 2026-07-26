@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.3 - 2026-07-26
+
+### Performance
+
+- Stop preprocessing obsolete document revisions after cancellation.
+
 ## 0.32.2 - 2026-07-26
 
 ### Performance
