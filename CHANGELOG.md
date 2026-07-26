@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.7 - 2026-07-26
+
+### Performance
+
+- Stop state, constant, and control-flow analysis for obsolete revisions.
+
 ## 0.32.6 - 2026-07-26
 
 ### Performance
