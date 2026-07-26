@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.32.1 - 2026-07-26
+
+### Fixed
+
+- Avoid stale semantic diagnostics and CFG spans after malformed or
+  signature-adjacent edits.
+
 ## 0.32.0 - 2026-07-26
 
 ### Performance
