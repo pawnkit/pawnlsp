@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.9 - 2026-07-26
+
+### Fixed
+
+- Allow bounded analysis of large macro-heavy projects such as SAFW.
+
 ## 0.32.8 - 2026-07-26
 
 ### Performance

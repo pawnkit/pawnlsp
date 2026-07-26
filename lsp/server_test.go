@@ -43,6 +43,12 @@ func TestDidChangeRejectsStaleVersion(t *testing.T) {
 	}
 }
 
+func TestAnalysisOutputLimitSupportsMacroHeavyProjects(t *testing.T) {
+	if analysisOutputTokenLimit < 6_000_000 {
+		t.Fatalf("analysis output limit = %d, want at least 6000000", analysisOutputTokenLimit)
+	}
+}
+
 func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
 	uri := tempDocumentURI(t)
 	s := &server{documents: map[string]*document{}}

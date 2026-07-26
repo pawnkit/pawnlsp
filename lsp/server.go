@@ -100,7 +100,7 @@ type server struct {
 }
 
 const (
-	analysisOutputTokenLimit = 50_000
+	analysisOutputTokenLimit = 8_000_000
 	documentPublishDebounce  = 150 * time.Millisecond
 )
 
