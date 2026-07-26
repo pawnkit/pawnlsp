@@ -1552,6 +1552,9 @@ func spanDocument(doc *document, span coresource.Span) (string, []byte) {
 }
 
 func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
+	if len(items) == 0 {
+		return []lspDiagnostic{}
+	}
 	seen := make(map[string]bool, len(items))
 	out := items[:0]
 	for _, item := range items {

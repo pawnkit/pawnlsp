@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.32.13 - 2026-07-26
+
+### Fixed
+
+- Return an empty array for clean workspace diagnostic reports.
+
 ## 0.32.12 - 2026-07-26
 
 ### Performance
