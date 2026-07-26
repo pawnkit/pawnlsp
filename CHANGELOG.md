@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.29.3 - 2026-07-26
+
+### Changed
+
+- Updated line indexes incrementally after range-based document changes.
+
 ## 0.29.2 - 2026-07-26
 
 ### Changed

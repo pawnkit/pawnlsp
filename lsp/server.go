@@ -579,12 +579,12 @@ func (s *server) didChange(raw json.RawMessage) error {
 		if end < start {
 			return errors.New("invalid change range: end precedes start")
 		}
-		nextText := make([]byte, 0, len(text)-int(end-start)+len(change.Text))
-		nextText = append(nextText, text[:start]...)
-		nextText = append(nextText, change.Text...)
-		nextText = append(nextText, text[end:]...)
-		text = nextText
-		index = coresource.NewLineIndex(string(text))
+		nextIndex, err := index.Apply(start, end, change.Text)
+		if err != nil {
+			return fmt.Errorf("apply change: %w", err)
+		}
+		index = nextIndex
+		text = []byte(index.Content())
 	}
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text, Index: index,

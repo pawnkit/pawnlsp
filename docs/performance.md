@@ -53,6 +53,9 @@ Owned analysis snapshots remove one full-file copy from each editor revision.
 This is visible in allocations but does not remove the parser and lint work
 that still dominates the benchmark.
 
+Range-based edits update line starts from the changed span instead of scanning
+the whole document again. Analysis still needs a contiguous source buffer.
+
 The first CPU profile found repeated linear scans by declaration and reference
 span. Span indexes removed that bottleneck. The remaining edit still rebuilds
 the parser, preprocessor, semantic model, control-flow graphs, and lint model,
