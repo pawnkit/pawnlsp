@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.28.4 - 2026-07-26
+
+### Changed
+
+- Updated to pawnlint v1.2.1 for compact resource-wrapper analysis.
+
 ## 0.28.3 - 2026-07-26
 
 ### Changed
