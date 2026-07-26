@@ -2,6 +2,17 @@
 
 Notable changes are recorded here.
 
+## 0.31.0 - 2026-07-26
+
+### Added
+
+- Report declaration indexing and reuse in analysis traces and benchmarks.
+
+### Changed
+
+- Updated parser, analysis, and lint dependencies for declaration-level
+  revision tracking.
+
 ## 0.30.1 - 2026-07-26
 
 ### Changed
