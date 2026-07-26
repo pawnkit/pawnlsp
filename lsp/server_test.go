@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawn-analysis/query"
 	"github.com/pawnkit/pawn-analysis/sema"
@@ -68,6 +69,68 @@ func TestRapidDidChangeCoalescesToLatestVersion(t *testing.T) {
 	}
 	if doc.Analysis == nil {
 		t.Fatal("final analysis missing")
+	}
+}
+
+func TestDidChangeAppliesIncrementalUTF16Ranges(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := []byte("main() { new value = \"😀\"; }\n")
+	doc := &document{URI: uri, Path: "/tmp/test.pwn", Text: text, Version: 1}
+	s := &server{
+		documents: map[string]*document{uri: doc},
+		snapshot:  query.New(query.Document{URI: coresource.URI(uri), Text: text, Version: 1}),
+	}
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{
+			{"range": map[string]any{
+				"start": map[string]any{"line": 0, "character": 22},
+				"end":   map[string]any{"line": 0, "character": 24},
+			}, "text": "Pawn"},
+			{"range": map[string]any{
+				"start": map[string]any{"line": 0, "character": 13},
+				"end":   map[string]any{"line": 0, "character": 18},
+			}, "text": "answer"},
+		},
+	})
+	if err := s.didChange(params); err != nil {
+		t.Fatal(err)
+	}
+	got := s.document(uri)
+	if want := "main() { new answer = \"Pawn\"; }\n"; got == nil || string(got.Text) != want {
+		t.Fatalf("text = %q, want %q", got.Text, want)
+	}
+	if got.cancel != nil {
+		got.cancel()
+	}
+}
+
+func TestDidChangeKeepsWorkspaceIndex(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := []byte("main() {}\n")
+	ready := closedChannel()
+	index := &workspaceIndex{root: "/tmp", ready: ready, files: map[coresource.URI]*analysis.Result{}}
+	doc := &document{URI: uri, Path: "/tmp/test.pwn", Root: "/tmp", Text: text, Version: 1}
+	s := &server{
+		documents:  map[string]*document{uri: doc},
+		snapshot:   query.New(query.Document{URI: coresource.URI(uri), Text: text, Version: 1}),
+		workspaces: map[string]*workspaceIndex{"/tmp": index},
+	}
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 7},
+			"end":   map[string]any{"line": 0, "character": 7},
+		}, "text": "return 0;"}},
+	})
+	if err := s.didChange(params); err != nil {
+		t.Fatal(err)
+	}
+	if s.workspaces["/tmp"] != index {
+		t.Fatal("ordinary edit restarted the workspace index")
+	}
+	if current := s.document(uri); current != nil && current.cancel != nil {
+		current.cancel()
 	}
 }
 

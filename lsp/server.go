@@ -323,7 +323,7 @@ func (s *server) handle(request message) (bool, error) {
 		s.projectRevision++
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
-				"textDocumentSync": 1, "codeActionProvider": true,
+				"textDocumentSync": 2, "codeActionProvider": true,
 				"callHierarchyProvider":  true,
 				"diagnosticProvider":     map[string]any{"interFileDependencies": true, "workspaceDiagnostics": true},
 				"completionProvider":     map[string]any{"triggerCharacters": []string{"@", "#", "<", "\"", "/", "\\"}, "resolveProvider": true},
@@ -513,7 +513,8 @@ func (s *server) didChange(raw json.RawMessage) error {
 			Version int    `json:"version"`
 		} `json:"textDocument"`
 		ContentChanges []struct {
-			Text string `json:"text"`
+			Range *lspRange `json:"range"`
+			Text  string    `json:"text"`
 		} `json:"contentChanges"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
@@ -529,8 +530,36 @@ func (s *server) didChange(raw json.RawMessage) error {
 	if doc.cancel != nil {
 		doc.cancel()
 	}
+	text := doc.Text
+	for _, change := range params.ContentChanges {
+		if change.Range == nil {
+			text = []byte(change.Text)
+			continue
+		}
+		index := coresource.NewLineIndex(string(text))
+		start, err := index.Offset(coresource.Position{
+			Line: change.Range.Start.Line, Character: change.Range.Start.Character,
+		}, coresource.UTF16)
+		if err != nil {
+			return fmt.Errorf("invalid change range start: %w", err)
+		}
+		end, err := index.Offset(coresource.Position{
+			Line: change.Range.End.Line, Character: change.Range.End.Character,
+		}, coresource.UTF16)
+		if err != nil {
+			return fmt.Errorf("invalid change range end: %w", err)
+		}
+		if end < start {
+			return errors.New("invalid change range: end precedes start")
+		}
+		nextText := make([]byte, 0, len(text)-int(end-start)+len(change.Text))
+		nextText = append(nextText, text[:start]...)
+		nextText = append(nextText, change.Text...)
+		nextText = append(nextText, text[end:]...)
+		text = nextText
+	}
 	next := &document{
-		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: []byte(params.ContentChanges[len(params.ContentChanges)-1].Text),
+		URI: doc.URI, Path: doc.Path, Root: doc.Root, Text: text,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names, ready: make(chan struct{}),
 		Revision: doc.Revision,
 	}
@@ -543,7 +572,6 @@ func (s *server) didChange(raw json.RawMessage) error {
 	s.documents[next.URI] = next
 	s.mu.Unlock()
 	s.schedulePublishAfter(next, s.snapshot, documentPublishDebounce)
-	s.restartWorkspaceIndex(next)
 	return nil
 }
 

@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.27.0 - 2026-07-26
+
+### Changed
+
+- Accepted incremental LSP text changes.
+- Kept the workspace index across ordinary document edits.
+- Added a 50,000-line edit-to-diagnostics benchmark and baseline.
+- Updated to pawn-analysis v0.1.19.
+
 ## 0.26.11 - 2026-07-25
 
 ### Changed

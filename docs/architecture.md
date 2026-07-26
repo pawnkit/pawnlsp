@@ -16,5 +16,8 @@ Documents use immutable, versioned snapshots. New edits cancel older analysis,
 and stale results are discarded. Navigation waits for the current snapshot.
 Project source files are indexed in the background for cross-file navigation
 call hierarchy, and workspace diagnostics. The index has file and byte limits.
+Incremental text changes update the open document without restarting the
+workspace index. The current analysis pipeline still rebuilds the changed file;
+[performance.md](performance.md) tracks that work.
 
 Document formatting delegates to pawnfmt's public library API.
