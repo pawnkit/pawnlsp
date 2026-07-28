@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.33 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to reduce reference sorting time.
+- Reduced median warm SAFW editor linting from about 187 ms to 177 ms on the
+  reference machine.
+
 ## 0.33.32 - 2026-07-28
 
 ### Performance
