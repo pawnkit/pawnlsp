@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.13 - 2026-07-28
+
+### Performance
+
+- Reused pawn-analysis include diagnostics through pawnlint v1.6.0.
+
 ## 0.33.12 - 2026-07-28
 
 ### Performance
