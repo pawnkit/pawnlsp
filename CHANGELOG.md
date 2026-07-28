@@ -2,6 +2,18 @@
 
 Notable changes are recorded here.
 
+## 0.33.22 - 2026-07-28
+
+### Fixed
+
+- Pass shared include buffers to pawnlint so unsaved include changes are used.
+
+### Performance
+
+- Updated pawnlint to cache include metadata during each project build.
+- Reduced warm SAFW editor linting from about 353 ms to about 337 ms on the
+  reference machine.
+
 ## 0.33.21 - 2026-07-28
 
 ### Fixed
