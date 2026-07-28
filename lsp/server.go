@@ -650,6 +650,7 @@ func (s *server) didClose(raw json.RawMessage) error {
 }
 
 func (s *server) reloadProjects() error {
+	s.parseCache.InvalidateFiles()
 	s.mu.Lock()
 	documents := make([]*document, 0, len(s.documents))
 	for _, doc := range s.documents {

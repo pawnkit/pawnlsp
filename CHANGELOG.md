@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.29 - 2026-07-28
+
+### Performance
+
+- Reuse bounded filesystem probes during warm include resolution.
+- Invalidate those probes when watched files or project settings change.
+- Reduced warm SAFW editor linting from about 230 ms to about 205 ms and
+  allocations from about 87 MB to 81 MB on the reference machine.
+
 ## 0.33.28 - 2026-07-28
 
 ### Performance
