@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	parser "github.com/pawnkit/pawn-parser"
 )
 
@@ -107,6 +108,87 @@ func TestServerReturnsInlayHints(t *testing.T) {
 	for _, value := range []string{"inlayHintProvider", `"label":"playerid:"`, `"label":"x:"`, `"label":"y:"`, `"label":"z:"`} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("inlay hint output missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestServerReturnsInlayHintForMatchingArgumentName(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "stock Save(playerid) { return playerid; }\nmain() { new playerid; Save(playerid); }\n"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/inlayHint", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": map[string]any{"line": 1, "character": 0}, "end": map[string]any{"line": 2, "character": 0}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"label":"playerid:"`) {
+		t.Fatalf("matching parameter hint missing: %s", output.String())
+	}
+}
+
+func TestServerUsesForwardedMacroSignatureForInlayHints(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "stock Dialog_Open(playerid, const function[], style, const caption[]) { return style; }\n#define PlayerDialog_Show(%0,%1, \\\n Dialog_Open(%0,#%1,\nmain() { PlayerDialog_Show(0, Menu, 2, \"Title\"); }\n"
+	result := analysis.Analyze([]byte(text), analysis.Options{})
+	signature, ok := (&server{}).callSignature(&document{Analysis: result}, "PlayerDialog_Show")
+	if !ok || len(signature.Parameters) != 4 || parameterName(signature.Parameters[0]) != "playerid" {
+		t.Fatalf("forwarded signature = %#v, %v", signature, ok)
+	}
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/inlayHint", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": map[string]any{"line": 3, "character": 0}, "end": map[string]any{"line": 4, "character": 0}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{`"label":"playerid:"`, `"label":"function:"`, `"label":"style:"`, `"label":"caption:"`} {
+		if !strings.Contains(output.String(), label) {
+			t.Fatalf("forwarded macro hint missing %s: %s", label, output.String())
+		}
+	}
+}
+
+func TestServerReturnsPawnColors(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "new red = 0xFF0000;\nnew translucent = 0x00FF0080;\n"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/documentColor", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/colorPresentation", "params": map[string]any{
+		"color": map[string]any{"red": 1, "green": 0, "blue": 0, "alpha": 1},
+		"range": map[string]any{"start": map[string]any{"line": 0, "character": 10}, "end": map[string]any{"line": 0, "character": 18}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`"colorProvider":true`, `"red":1`, `"green":1`, `"alpha":0.5019607843137255`, `"label":"0xFF0000"`} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("color output missing %q: %s", value, output.String())
 		}
 	}
 }

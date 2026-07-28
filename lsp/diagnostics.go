@@ -219,11 +219,35 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph 
 		}
 	}
 	if graph != nil {
-		items = append(items, analysisGraphDiagnosticItems(graph)[coresource.URI(doc.URI)]...)
+		analysisItems := analysisGraphDiagnosticItems(graph)[coresource.URI(doc.URI)]
+		items = append(items, removeMirroredAnalysisDiagnostics(analysisItems, items)...)
 	} else {
-		items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)...)
+		analysisItems := analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)
+		items = append(items, removeMirroredAnalysisDiagnostics(analysisItems, items)...)
 	}
 	return dedupeDiagnostics(items)
+}
+
+func removeMirroredAnalysisDiagnostics(analysisItems, lintItems []lspDiagnostic) []lspDiagnostic {
+	mirrors := map[string]string{"pawn-analysis:sema/unreachable": "unreachable-code"}
+	result := analysisItems[:0]
+	for _, item := range analysisItems {
+		lintCode, mirrored := mirrors[item.Code]
+		if mirrored && hasDiagnosticAt(lintItems, lintCode, item.Range) {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func hasDiagnosticAt(items []lspDiagnostic, code string, target lspRange) bool {
+	for _, item := range items {
+		if item.Code == code && rangesOverlap(item.Range, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func analysisDiagnosticItems(result *analysis.Result, text []byte) []lspDiagnostic {

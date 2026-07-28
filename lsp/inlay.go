@@ -55,7 +55,7 @@ func (s *server) inlayHints(id, raw json.RawMessage) error {
 			argument := arguments.Node()
 			name := parameterName(signature.Parameters[argumentIndex])
 			argumentIndex++
-			if name == "" || argument.Kind() == parser.KindArgumentName || argument.Text() == name {
+			if name == "" || argument.Kind() == parser.KindArgumentName {
 				continue
 			}
 			hints = append(hints, map[string]any{

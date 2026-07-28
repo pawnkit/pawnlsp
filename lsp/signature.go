@@ -56,21 +56,34 @@ type signatureInformation struct {
 }
 
 func (s *server) callSignature(doc *document, name string) (signatureInformation, bool) {
+	return s.callSignatureSeen(doc, name, make(map[string]bool))
+}
+
+func (s *server) callSignatureSeen(doc *document, name string, seen map[string]bool) (signatureInformation, bool) {
 	if doc == nil || doc.Analysis == nil {
 		return signatureInformation{}, false
 	}
-	if table := navigationTable(doc.Analysis); table != nil {
+	if seen[name] {
+		return signatureInformation{}, false
+	}
+	seen[name] = true
+	if doc.Analysis.Preprocess != nil {
+		if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok && macro.Kind == preprocess.MacroFunctionLike {
+			if target, forwarded := macro.ReplacementCallable(); forwarded && target != name {
+				if signature, found := s.callSignatureSeen(doc, target, seen); found {
+					return signature, true
+				}
+			}
+			label := macroSignature(macro)
+			return signatureInformation{Label: label, Parameters: declarationParameters(label)}, true
+		}
+	}
+	for _, table := range navigationTables(doc.Analysis) {
 		for _, item := range table.Symbols {
 			if item.Name == name && item.Kind.IsCallable() {
 				declaration := localDeclaration(doc.Analysis, item)
 				return signatureInformation{Label: declaration, Parameters: declarationParameters(declaration)}, true
 			}
-		}
-	}
-	if doc.Analysis.Preprocess != nil {
-		if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok && macro.Kind == preprocess.MacroFunctionLike {
-			label := macroSignature(macro)
-			return signatureInformation{Label: label, Parameters: declarationParameters(label)}, true
 		}
 	}
 	occurrences := s.workspaceOccurrences(name)

@@ -370,6 +370,7 @@ func (s *server) handle(request message) (bool, error) {
 				"documentHighlightProvider": true,
 				"foldingRangeProvider":      true,
 				"inlayHintProvider":         true,
+				"colorProvider":             true,
 				"hoverProvider":             true, "referencesProvider": true,
 				"renameProvider": map[string]any{"prepareProvider": true},
 				"semanticTokensProvider": map[string]any{
@@ -436,6 +437,10 @@ func (s *server) handle(request message) (bool, error) {
 		return false, s.foldingRanges(request.ID, request.Params)
 	case "textDocument/inlayHint":
 		return false, s.inlayHints(request.ID, request.Params)
+	case "textDocument/documentColor":
+		return false, s.documentColors(request.ID, request.Params)
+	case "textDocument/colorPresentation":
+		return false, s.colorPresentation(request.ID, request.Params)
 	case "textDocument/hover":
 		return false, s.hover(request.ID, request.Params)
 	case "textDocument/references":
@@ -1667,6 +1672,7 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 		TextDocument struct {
 			URI string `json:"uri"`
 		} `json:"textDocument"`
+		Range *lspRange `json:"range"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
@@ -1674,7 +1680,11 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 	doc := s.fullReadyDocument(params.TextDocument.URI)
 	actions := make([]map[string]any, 0)
 	if doc != nil {
+		seen := make(map[string]bool)
 		for _, finding := range doc.Diagnostics {
+			if params.Range != nil && !rangesOverlap(*params.Range, diagnosticRange(doc.text(), finding)) {
+				continue
+			}
 			if s.rules == nil {
 				continue
 			}
@@ -1686,26 +1696,48 @@ func (s *server) codeActions(id, raw json.RawMessage) error {
 				for _, edit := range finding.Fix.Edits {
 					edits = append(edits, textEdit{Range: offsetRange(doc.text(), edit.Range.Start.Offset, edit.Range.End.Offset), NewText: edit.NewText})
 				}
-				actions = append(actions, map[string]any{
+				action := map[string]any{
 					"title":       finding.Fix.Description,
 					"kind":        "quickfix",
 					"isPreferred": true,
 					"edit":        map[string]any{"changes": map[string]any{doc.URI: edits}},
-				})
+				}
+				appendCodeAction(&actions, seen, finding.Fix.Description, action)
 			}
-			actions = append(actions, map[string]any{
-				"title": "Suppress " + finding.RuleID + " on this line",
+			suppressTitle := "Suppress " + finding.RuleID + " on this line"
+			appendCodeAction(&actions, seen, suppressTitle, map[string]any{
+				"title": suppressTitle,
 				"kind":  "quickfix",
 				"edit":  map[string]any{"changes": map[string]any{doc.URI: []textEdit{suppressionEdit(doc.text(), finding)}}},
 			})
-			actions = append(actions, map[string]any{
-				"title":   "Explain " + finding.RuleID,
+			explainTitle := "Explain " + finding.RuleID
+			appendCodeAction(&actions, seen, explainTitle, map[string]any{
+				"title":   explainTitle,
 				"kind":    "quickfix",
 				"command": map[string]any{"title": "Explain rule", "command": "pawn.openRuleDocumentation", "arguments": []string{finding.RuleID}},
 			})
 		}
 	}
 	return s.respond(id, actions)
+}
+
+func appendCodeAction(actions *[]map[string]any, seen map[string]bool, key string, action map[string]any) {
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	*actions = append(*actions, action)
+}
+
+func rangesOverlap(left, right lspRange) bool {
+	return comparePosition(left.Start, right.End) <= 0 && comparePosition(right.Start, left.End) <= 0
+}
+
+func comparePosition(left, right position) int {
+	if left.Line != right.Line {
+		return left.Line - right.Line
+	}
+	return left.Character - right.Character
 }
 
 func suppressionEdit(source []byte, finding diagnostic.Diagnostic) textEdit {

@@ -156,12 +156,18 @@ func TestDidChangeKeepsWorkspaceIndex(t *testing.T) {
 
 func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	uri := tempDocumentURI(t)
-	source := "main() { if (true); { return; } }\n"
+	source := "main() { if (true); { return; } if (false); { return; } }\n"
 	messages := []any{
 		map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}},
 		map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{"textDocument": map[string]any{"uri": uri, "version": 1, "text": source}}},
 		map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/diagnostic", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
-		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction", "params": map[string]any{"textDocument": map[string]any{"uri": uri}}},
+		map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/codeAction", "params": map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"range": map[string]any{
+				"start": map[string]any{"line": 0, "character": 18},
+				"end":   map[string]any{"line": 0, "character": 19},
+			},
+		}},
 		map[string]any{"jsonrpc": "2.0", "id": 4, "method": "shutdown", "params": nil},
 		map[string]any{"jsonrpc": "2.0", "method": "exit"},
 	}
@@ -186,6 +192,18 @@ func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	}
 	if strings.Contains(got, "textDocument/publishDiagnostics") {
 		t.Fatalf("server returned push diagnostics: %s", got)
+	}
+	if count := strings.Count(got, `"title":"Suppress empty-condition-body on this line"`); count != 1 {
+		t.Fatalf("suppress action count = %d: %s", count, got)
+	}
+}
+
+func TestMirroredUnreachableDiagnosticIsRemoved(t *testing.T) {
+	rng := lspRange{Start: position{Line: 3, Character: 2}, End: position{Line: 3, Character: 10}}
+	analysisItems := []lspDiagnostic{{Code: "pawn-analysis:sema/unreachable", Range: rng}}
+	lintItems := []lspDiagnostic{{Code: "unreachable-code", Range: rng}}
+	if got := removeMirroredAnalysisDiagnostics(analysisItems, lintItems); len(got) != 0 {
+		t.Fatalf("mirrored diagnostics = %#v", got)
 	}
 }
 

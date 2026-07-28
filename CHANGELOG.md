@@ -2,6 +2,20 @@
 
 Notable changes are recorded here.
 
+## 0.33.38 - 2026-07-28
+
+### Added
+
+- Show editor colour previews for hexadecimal Pawn colours.
+- Use forwarded function signatures for macro calls such as
+  `PlayerDialog_Show`.
+
+### Fixed
+
+- Show parameter hints when argument and parameter names match.
+- Limit quick fixes to the selected diagnostic.
+- Remove duplicate unreachable-code diagnostics.
+
 ## 0.33.37 - 2026-07-28
 
 ### Fixed
