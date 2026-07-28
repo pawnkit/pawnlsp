@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.17 - 2026-07-28
+
+### Performance
+
+- Index macro invocation spans once when filtering diagnostics.
+- Reduced cold SAFW workspace diagnostics from about 4.0 seconds to 2.4
+  seconds on the reference machine.
+
 ## 0.33.16 - 2026-07-28
 
 ### Performance

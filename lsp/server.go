@@ -866,31 +866,17 @@ func reconcileDiagnostics(items []diagnostic.Diagnostic, shared *analysis.Result
 			missing[[2]int{int(item.Primary.Start), int(item.Primary.End)}] = true
 		}
 	}
+	macros := newMacroInvocationIndex(shared)
 	result := items[:0]
 	for _, item := range items {
 		key := [2]int{item.Range.Start.Offset, item.Range.End.Offset}
 		resolvedInclude := item.RuleID == "missing-include" && !missing[key]
-		macroDeclaration := item.RuleID == "duplicate-function-definition" && macroInvocationAt(shared, key[0], key[1])
+		macroDeclaration := item.RuleID == "duplicate-function-definition" && macros.contains(key[0], key[1])
 		if !resolvedInclude && !macroDeclaration {
 			result = append(result, item)
 		}
 	}
 	return result
-}
-
-func macroInvocationAt(result *analysis.Result, start, end int) bool {
-	if result == nil || result.Preprocess == nil {
-		return false
-	}
-	for _, item := range result.Preprocess.ExpandedTokens {
-		for origin := item.Origin; origin != nil; origin = origin.Parent {
-			span := origin.Span
-			if origin.Macro != "" && span.File == 0 && start >= span.Start.Offset && end <= span.End.Offset {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (s *server) cancelDocuments() {

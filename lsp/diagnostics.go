@@ -140,9 +140,10 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 		items[uri] = nil
 	}
 	indexes := make(lineIndexSet, len(text))
+	macros := newMacroInvocationIndex(result)
 	for _, finding := range result.Diagnostics {
 		uri, ok := result.Registry.URI(finding.Primary.File)
-		if !ok || macroDiagnostic(result, finding) {
+		if !ok || macroDiagnostic(macros, finding) {
 			continue
 		}
 		items[uri] = append(items[uri], lspDiagnostic{
@@ -243,8 +244,9 @@ func analysisDiagnosticItemsWithIndex(result *analysis.Result, text []byte, inde
 		}
 	}
 	items := make([]lspDiagnostic, 0, len(result.Diagnostics))
+	macros := newMacroInvocationIndex(result)
 	for _, finding := range result.Diagnostics {
-		if finding.Primary.File != result.File || macroDiagnostic(result, finding) {
+		if finding.Primary.File != result.File || macroDiagnostic(macros, finding) {
 			continue
 		}
 		items = append(items, lspDiagnostic{
@@ -316,9 +318,59 @@ func analysisDiagnosticDocumentation(url string) *lspCodeDescription {
 	return diagnosticDocumentation(url)
 }
 
-func macroDiagnostic(result *analysis.Result, finding diagnostic.Diagnostic) bool {
+func macroDiagnostic(index macroInvocationIndex, finding diagnostic.Diagnostic) bool {
 	return finding.Code == "pawn-analysis:symbol/redeclared" &&
-		macroInvocationAt(result, int(finding.Primary.Start), int(finding.Primary.End))
+		index.contains(int(finding.Primary.Start), int(finding.Primary.End))
+}
+
+type macroInvocationSpan struct {
+	start int
+	end   int
+}
+
+type macroInvocationIndex struct {
+	spans  []macroInvocationSpan
+	maxEnd []int
+}
+
+func newMacroInvocationIndex(result *analysis.Result) macroInvocationIndex {
+	if result == nil || result.Preprocess == nil {
+		return macroInvocationIndex{}
+	}
+	unique := make(map[macroInvocationSpan]struct{})
+	for _, item := range result.Preprocess.ExpandedTokens {
+		for origin := item.Origin; origin != nil; origin = origin.Parent {
+			span := origin.Span
+			if origin.Macro != "" && span.File == 0 {
+				unique[macroInvocationSpan{start: span.Start.Offset, end: span.End.Offset}] = struct{}{}
+			}
+		}
+	}
+	spans := make([]macroInvocationSpan, 0, len(unique))
+	for span := range unique {
+		spans = append(spans, span)
+	}
+	sort.Slice(spans, func(i, j int) bool {
+		if spans[i].start != spans[j].start {
+			return spans[i].start < spans[j].start
+		}
+		return spans[i].end < spans[j].end
+	})
+	maxEnd := make([]int, len(spans))
+	for i, span := range spans {
+		maxEnd[i] = span.end
+		if i > 0 && maxEnd[i-1] > maxEnd[i] {
+			maxEnd[i] = maxEnd[i-1]
+		}
+	}
+	return macroInvocationIndex{spans: spans, maxEnd: maxEnd}
+}
+
+func (i macroInvocationIndex) contains(start, end int) bool {
+	index := sort.Search(len(i.spans), func(index int) bool {
+		return i.spans[index].start > start
+	}) - 1
+	return index >= 0 && i.maxEnd[index] >= end
 }
 
 func analysisSource(result *analysis.Result) []byte {
