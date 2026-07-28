@@ -1,13 +1,17 @@
 package lsp
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
@@ -60,6 +64,14 @@ func TestWorkspacePathKeyAcceptsBothSeparators(t *testing.T) {
 	backslashed := workspacePathKey(`C:\project\src\main.pwn`)
 	if slashed != backslashed {
 		t.Fatalf("path keys differ: %q != %q", slashed, backslashed)
+	}
+}
+
+func TestStandaloneWorkspaceDiagnosticsSkipIncludes(t *testing.T) {
+	uri := coresource.FileURI(filepath.Join(t.TempDir(), "guarded.inc"))
+	result := analysis.Analyze([]byte("#error parent include not loaded\n"), analysis.Options{URI: uri})
+	if diagnostics := standaloneWorkspaceDiagnosticItems(uri, result); len(diagnostics) != 0 || diagnostics == nil {
+		t.Fatalf("include diagnostics = %#v", diagnostics)
 	}
 }
 
@@ -116,6 +128,91 @@ func TestRealProjectWorkspaceDiagnostics(t *testing.T) {
 		}
 		if finding.Code == "pawn-analysis:sema/argument-count" && strings.Contains(finding.Message, `"format"`) {
 			t.Errorf("unexpected format diagnostic: %s", finding.Message)
+		}
+	}
+}
+
+func TestRealProjectProtocolResults(t *testing.T) {
+	root := os.Getenv("PAWN_REAL_PROJECT_DIR")
+	if root == "" {
+		t.Skip("PAWN_REAL_PROJECT_DIR is not set")
+	}
+	entry := filepath.Join(root, "src", "safw.pwn")
+	text, err := os.ReadFile(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri := coresource.FileURI(entry).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": string(text)},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/semanticTokens/full", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{"not loaded", `"format" expects 4 arguments`} {
+		if strings.Contains(output.String(), value) {
+			t.Errorf("protocol output contains %q", value)
+		}
+	}
+	reader := bufio.NewReader(bytes.NewReader(output.Bytes()))
+	foundInactive := false
+	cleared := map[string]bool{
+		coresource.FileURI(filepath.Join(root, "src", "modules", "core", "api", "index.inc")).String():     false,
+		coresource.FileURI(filepath.Join(root, "src", "modules", "core", "logger", "logger.inc")).String(): false,
+	}
+	for {
+		body, err := readFrame(reader)
+		if err != nil {
+			break
+		}
+		var response struct {
+			ID     int `json:"id"`
+			Result struct {
+				Data  []int `json:"data"`
+				Items []struct {
+					URI   string `json:"uri"`
+					Items []any  `json:"items"`
+				} `json:"items"`
+			} `json:"result"`
+		}
+		if json.Unmarshal(body, &response) != nil {
+			continue
+		}
+		if response.ID == 2 {
+			for _, report := range response.Result.Items {
+				if _, ok := cleared[report.URI]; ok && len(report.Items) == 0 {
+					cleared[report.URI] = true
+				}
+			}
+			continue
+		}
+		if response.ID != 3 {
+			continue
+		}
+		line := 0
+		for index := 0; index+4 < len(response.Result.Data); index += 5 {
+			line += response.Result.Data[index]
+			if line >= 429 && line <= 445 && response.Result.Data[index+3] == semanticComment {
+				foundInactive = true
+				break
+			}
+		}
+	}
+	if !foundInactive {
+		t.Fatal("semantic response did not dim the inactive YSF block")
+	}
+	for uri, ok := range cleared {
+		if !ok {
+			t.Errorf("workspace response did not clear %s", uri)
 		}
 	}
 }

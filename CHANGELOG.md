@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.5 - 2026-07-28
+
+### Fixed
+
+- Use standard comment highlighting for inactive code.
+- Do not diagnose include files without an entry graph.
+
 ## 0.33.4 - 2026-07-28
 
 ### Fixed

@@ -72,9 +72,8 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 			continue
 		}
 		for uri, result := range index.files {
-			text := analysisSource(result)
 			items = append(items, map[string]any{
-				"uri": uri.String(), "kind": "full", "items": analysisDiagnosticItems(result, text),
+				"uri": uri.String(), "kind": "full", "items": standaloneWorkspaceDiagnosticItems(uri, result),
 			})
 		}
 	}
@@ -84,6 +83,13 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 		return left < right
 	})
 	return s.respond(id, map[string]any{"items": items})
+}
+
+func standaloneWorkspaceDiagnosticItems(uri coresource.URI, result *analysis.Result) []lspDiagnostic {
+	if path, err := uri.Filename(); err == nil && strings.EqualFold(filepath.Ext(path), ".inc") {
+		return []lspDiagnostic{}
+	}
+	return analysisDiagnosticItems(result, analysisSource(result))
 }
 
 func workspaceDiagnosticURI(root string, uri coresource.URI) bool {
