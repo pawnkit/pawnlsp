@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.30 - 2026-07-28
+
+### Performance
+
+- Reuse unresolved symbol lookups during lint reference indexing.
+- Skip sorting reference lists that are already ordered.
+- Reduced warm SAFW editor linting from about 218 ms to about 205 ms and
+  allocation count from about 399,000 to 352,000 on the reference machine.
+
 ## 0.33.29 - 2026-07-28
 
 ### Performance
