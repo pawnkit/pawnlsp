@@ -801,10 +801,11 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	if shared == nil && analysisErr == nil {
 		shared, analysisErr = snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 			URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
-			MaxOutputTokens: analysisOutputTokenLimit,
-			Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
-			TokenCache:      s.tokenCache,
-			Trace:           trace,
+			MaxOutputTokens:          analysisOutputTokenLimit,
+			Revision:                 fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
+			TokenCache:               s.tokenCache,
+			ReuseCompatibleExpansion: true,
+			Trace:                    trace,
 		})
 	}
 	if analysisErr != nil {
@@ -996,7 +997,6 @@ func (s *server) definition(id, raw json.RawMessage) error {
 	if err != nil {
 		return s.respond(id, nil)
 	}
-	table := navigationTable(doc.Analysis)
 	if include, ok := includeAt(doc.Analysis, int(offset)); ok {
 		if !include.Resolved || include.ResolvedURI == "" {
 			return s.respond(id, nil)
@@ -1006,15 +1006,17 @@ func (s *server) definition(id, raw json.RawMessage) error {
 			"range": offsetRange(nil, 0, 0),
 		})
 	}
-	for _, ref := range table.References {
-		if ref.Resolved == 0 || !ref.Span.Contains(offset) {
-			continue
+	for _, table := range navigationTables(doc.Analysis) {
+		for _, ref := range table.References {
+			if ref.Resolved == 0 || ref.Span.File != doc.Analysis.File || !ref.Span.Contains(offset) {
+				continue
+			}
+			decl, ok := table.Symbol(ref.Resolved)
+			if !ok {
+				break
+			}
+			return s.respond(id, analysisLocation(doc, decl.Span))
 		}
-		decl, ok := table.Symbol(ref.Resolved)
-		if !ok {
-			break
-		}
-		return s.respond(id, analysisLocation(doc, decl.Span))
 	}
 	name, _, _ := identifierAt(doc.text(), int(offset))
 	occurrences := s.workspaceOccurrences(name)
@@ -1053,7 +1055,7 @@ func (s *server) hover(id, raw json.RawMessage) error {
 			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
-	item, ok := symbolAt(navigationTable(doc.Analysis), doc.Analysis.File, offset)
+	item, _, ok := symbolAtAnalysis(doc.Analysis, doc.Analysis.File, offset)
 	if ok {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": hoverText(doc, item)},
@@ -1433,11 +1435,37 @@ func documentOffset(doc *document, pos position) (coresource.Offset, bool) {
 	return offset, err == nil
 }
 
-func navigationTable(result *analysis.Result) *symbol.Table {
-	if result.ExpandedSymbols != nil {
-		return result.ExpandedSymbols
+func navigationTables(result *analysis.Result) []*symbol.Table {
+	if result == nil {
+		return nil
 	}
-	return result.Symbols
+	tables := make([]*symbol.Table, 0, 2)
+	if result.Symbols != nil {
+		tables = append(tables, result.Symbols)
+	}
+	if result.ExpandedSymbols != nil && result.ExpandedSymbols != result.Symbols {
+		tables = append(tables, result.ExpandedSymbols)
+	}
+	return tables
+}
+
+func navigationTable(result *analysis.Result) *symbol.Table {
+	if result == nil {
+		return nil
+	}
+	if result.Symbols != nil {
+		return result.Symbols
+	}
+	return result.ExpandedSymbols
+}
+
+func symbolAtAnalysis(result *analysis.Result, file coresource.FileID, offset coresource.Offset) (symbol.Symbol, *symbol.Table, bool) {
+	for _, table := range navigationTables(result) {
+		if item, ok := symbolAt(table, file, offset); ok {
+			return item, table, true
+		}
+	}
+	return symbol.Symbol{}, nil, false
 }
 
 func symbolAt(table *symbol.Table, file coresource.FileID, offset coresource.Offset) (symbol.Symbol, bool) {
@@ -1489,8 +1517,7 @@ func (s *server) references(id, raw json.RawMessage) error {
 	if !ok {
 		return s.respond(id, []any{})
 	}
-	table := navigationTable(doc.Analysis)
-	item, ok := symbolAt(table, doc.Analysis.File, offset)
+	item, table, ok := symbolAtAnalysis(doc.Analysis, doc.Analysis.File, offset)
 	name := ""
 	global := false
 	if ok {

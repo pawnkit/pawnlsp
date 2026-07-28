@@ -14,7 +14,9 @@ import (
 	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
+	"github.com/pawnkit/pawn-analysis/preprocess"
 	coresource "github.com/pawnkit/pawnkit-core/source"
+	lintproject "github.com/pawnkit/pawnlint/pkg/project"
 )
 
 func TestWorkspaceSourceFiles(t *testing.T) {
@@ -124,7 +126,7 @@ func TestWorkspaceEntryUsesOpenInclude(t *testing.T) {
 	includes, _, projectRoot, entry := loadProjectContext(mainPath)
 	graph, err := analyzeWorkspaceEntry(context.Background(), projectRoot, entry, map[string][]byte{
 		workspacePathKey(includePath): []byte("stock OpenVersion() {}\n"),
-	}, includes, nil, nil)
+	}, includes, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +139,30 @@ func TestWorkspaceEntryUsesOpenInclude(t *testing.T) {
 		}
 	}
 	t.Fatal("open include was not in the project graph")
+}
+
+func TestWorkspaceEntryReusesPreviousAnalysis(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	first := []byte("stock First(value) { return value + 1; }\nstock Second(value) { return value + 2; }\n")
+	previous, err := analyzeWorkspaceEntry(
+		context.Background(), root, entry, map[string][]byte{workspacePathKey(entry): first},
+		nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := []byte("stock First(value) { return value + 3; }\nstock Second(value) { return value + 2; }\n")
+	current, err := analyzeWorkspaceEntry(
+		context.Background(), root, entry, map[string][]byte{workspacePathKey(entry): second},
+		nil, nil, nil, previous,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Reuse.Declarations == 0 {
+		t.Fatal("unchanged declaration was not reused")
+	}
 }
 
 func TestRealProjectWorkspaceDiagnostics(t *testing.T) {
@@ -314,4 +340,74 @@ func TestRealProjectWorkspaceDiagnosticLatency(t *testing.T) {
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestRealProjectIncrementalAnalysisLatency(t *testing.T) {
+	root := os.Getenv("PAWN_REAL_PROJECT_DIR")
+	if root == "" {
+		t.Skip("PAWN_REAL_PROJECT_DIR is not set")
+	}
+	entry := filepath.Join(root, "src", "safw.pwn")
+	text, err := os.ReadFile(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	includes, _, projectRoot, resolvedEntry := loadProjectContext(entry)
+	tokenCache := preprocess.NewTokenCache()
+	previous, err := analyzeWorkspaceEntry(
+		context.Background(), projectRoot, resolvedEntry,
+		map[string][]byte{workspacePathKey(entry): text}, includes, nil, tokenCache, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edit := bytes.LastIndex(text, []byte("return 0;"))
+	if edit < 0 {
+		t.Fatal("local edit target not found")
+	}
+	changed := append([]byte(nil), text...)
+	changed[edit+len("return ")] = '1'
+	stages := make(map[analysis.Stage]time.Duration)
+
+	started := time.Now()
+	current, err := analysis.AnalyzeContext(context.Background(), changed, analysis.Options{
+		URI: coresource.FileURI(resolvedEntry),
+		Includes: workspaceOverlayResolver{
+			base: includes, open: map[string][]byte{workspacePathKey(entry): changed},
+		},
+		RetainExpanded: true, Revision: projectRoot, MaxOutputTokens: analysisOutputTokenLimit,
+		Previous: previous, TokenCache: tokenCache, ReuseCompatibleExpansion: true,
+		Trace: func(event analysis.TraceEvent) {
+			stages[event.Stage] += event.Duration
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(started)
+	t.Logf(
+		"incremental workspace analysis took %s; %d expanded tokens; reused %d declarations, %d tag checks, %d CFGs",
+		elapsed, len(current.Preprocess.ExpandedTokens),
+		current.Reuse.Declarations, current.Reuse.Tags, current.Reuse.ControlFlow,
+	)
+	for stage, duration := range stages {
+		t.Logf("%s: %s", stage, duration)
+	}
+	if current.Reuse.ControlFlow == 0 {
+		t.Fatal("incremental analysis did not reuse control flow")
+	}
+	if !current.Reuse.CompatibleExpansion {
+		t.Fatal("incremental analysis did not reuse the dependency graph")
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("incremental analysis exceeded 2 seconds: %s", elapsed)
+	}
+	lintStarted := time.Now()
+	_, err = lintDocument(&document{
+		Path: entry, Root: projectRoot, Entry: resolvedEntry, Text: changed,
+	}, lintproject.NewParseCache(), current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("full editor lint took %s", time.Since(lintStarted))
 }

@@ -45,7 +45,7 @@ type workspaceOccurrence struct {
 }
 
 func (s *server) startWorkspaceIndex(doc *document) {
-	s.startWorkspaceIndexAfter(doc, 0)
+	s.startWorkspaceIndexAfter(doc, 0, nil)
 }
 
 func (s *server) refreshWorkspaceIndex(doc *document) {
@@ -61,7 +61,7 @@ func (s *server) refreshWorkspaceIndex(doc *document) {
 	s.startWorkspaceIndex(doc)
 }
 
-func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
+func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, previous *analysis.Result) {
 	if doc == nil || doc.Root == "" {
 		return
 	}
@@ -111,9 +111,13 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 			}
 		}
 		if doc.Entry != "" {
-			index.graph, index.diagnosticErr = analyzeWorkspaceEntry(
-				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+			graph, diagnosticErr := analyzeWorkspaceEntry(
+				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache, previous,
 			)
+			s.mu.Lock()
+			index.graph = graph
+			index.diagnosticErr = diagnosticErr
+			s.mu.Unlock()
 			closeDiagnostics()
 			if index.diagnosticErr != nil {
 				index.err = index.diagnosticErr
@@ -146,12 +150,14 @@ func (s *server) restartWorkspaceIndex(doc *document) {
 		return
 	}
 	s.mu.Lock()
+	var previous *analysis.Result
 	if current := s.workspaces[doc.Root]; current != nil && current.cancel != nil {
 		current.cancel()
+		previous = current.graph
 	}
 	delete(s.workspaces, doc.Root)
 	s.mu.Unlock()
-	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond)
+	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous)
 }
 
 func buildWorkspaceIndex(
@@ -166,7 +172,7 @@ func buildWorkspaceIndex(
 	var graph *analysis.Result
 	var err error
 	if entry != "" {
-		graph, err = analyzeWorkspaceEntry(ctx, root, entry, open, includes, names, tokenCache)
+		graph, err = analyzeWorkspaceEntry(ctx, root, entry, open, includes, names, tokenCache, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -229,6 +235,7 @@ func analyzeWorkspaceEntry(
 	includes preprocess.IncludeResolver,
 	names sema.Resolver,
 	tokenCache *preprocess.TokenCache,
+	previous *analysis.Result,
 ) (*analysis.Result, error) {
 	text, ok := open[workspacePathKey(entry)]
 	var err error
@@ -240,7 +247,8 @@ func analyzeWorkspaceEntry(
 	}
 	return analysis.AnalyzeContext(ctx, text, analysis.Options{
 		URI: coresource.FileURI(entry), Includes: workspaceOverlayResolver{base: includes, open: open}, Names: names, RetainExpanded: true,
-		Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache,
+		Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache, Previous: previous,
+		ReuseCompatibleExpansion: true,
 	})
 }
 

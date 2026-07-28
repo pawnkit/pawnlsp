@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.7 - 2026-07-28
+
+### Performance
+
+- Reuse the previous workspace graph for safe function-body edits.
+- Prefer current root symbols when a compatible dependency graph is in use.
+- SAFW local analysis fell from about 8.5 seconds to 0.25-0.40 seconds on the
+  reference machine.
+
 ## 0.33.6 - 2026-07-28
 
 ### Fixed

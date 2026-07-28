@@ -181,7 +181,7 @@ func completionItems(doc *document, prefix string, offset int) []map[string]any 
 	}
 
 	if doc != nil && doc.Analysis != nil {
-		if table := navigationTable(doc.Analysis); table != nil {
+		for _, table := range navigationTables(doc.Analysis) {
 			for _, item := range table.Symbols {
 				if !completionSymbolVisible(doc, table, item, offset) {
 					continue
@@ -324,7 +324,7 @@ func (s *server) completionDocumentation(data completionData) string {
 }
 
 func completionSymbol(result *analysis.Result, data completionData) (symbol.Symbol, bool) {
-	if table := navigationTable(result); table != nil {
+	for _, table := range navigationTables(result) {
 		for _, item := range table.Symbols {
 			if item.Name == data.Name && int(item.Span.Start) == data.Start && (data.Source == "" || symbolSourceURI(result, item) == data.Source) {
 				return item, true
