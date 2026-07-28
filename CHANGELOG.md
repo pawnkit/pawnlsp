@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.8 - 2026-07-28
+
+### Performance
+
+- Reuse the dependency graph for safe local insertions and deletions.
+
 ## 0.33.7 - 2026-07-28
 
 ### Performance

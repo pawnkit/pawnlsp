@@ -365,8 +365,11 @@ func TestRealProjectIncrementalAnalysisLatency(t *testing.T) {
 	if edit < 0 {
 		t.Fatal("local edit target not found")
 	}
-	changed := append([]byte(nil), text...)
-	changed[edit+len("return ")] = '1'
+	position := edit + len("return 0")
+	changed := make([]byte, 0, len(text)+4)
+	changed = append(changed, text[:position]...)
+	changed = append(changed, " + 0"...)
+	changed = append(changed, text[position:]...)
 	stages := make(map[analysis.Stage]time.Duration)
 
 	started := time.Now()
