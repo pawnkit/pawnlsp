@@ -476,6 +476,12 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "#include \"api.inc\"\n#include \"guarded.inc\"\n#include \"broken.pwn\"\nmain() {}\n"},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(guardedPath).String(), "version": 1, "text": "#if !defined CORE_API_API\n#error api.inc not loaded\n#endif\n"},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/diagnostic", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(guardedPath).String()},
+	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
 	var output bytes.Buffer

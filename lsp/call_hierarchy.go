@@ -173,6 +173,11 @@ func (s *server) workspaceResults() map[coresource.URI]*analysis.Result {
 	for _, index := range indexes {
 		<-index.ready
 		maps.Copy(results, index.files)
+		if index.graph != nil && index.graph.Registry != nil {
+			if uri, ok := index.graph.Registry.URI(index.graph.File); ok {
+				results[uri] = index.graph
+			}
+		}
 	}
 	for _, doc := range documents {
 		<-doc.ready

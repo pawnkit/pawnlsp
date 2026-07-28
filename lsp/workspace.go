@@ -46,6 +46,19 @@ func (s *server) startWorkspaceIndex(doc *document) {
 	s.startWorkspaceIndexAfter(doc, 0)
 }
 
+func (s *server) refreshWorkspaceIndex(doc *document) {
+	if doc == nil || doc.Root == "" {
+		return
+	}
+	s.mu.Lock()
+	if current := s.workspaces[doc.Root]; current != nil && current.cancel != nil {
+		current.cancel()
+	}
+	delete(s.workspaces, doc.Root)
+	s.mu.Unlock()
+	s.startWorkspaceIndex(doc)
+}
+
 func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 	if doc == nil || doc.Root == "" {
 		return
@@ -116,12 +129,23 @@ func buildWorkspaceIndex(
 	names sema.Resolver,
 	tokenCache *preprocess.TokenCache,
 ) (map[coresource.URI]*analysis.Result, *analysis.Result, error) {
+	var graph *analysis.Result
+	var err error
+	if entry != "" {
+		graph, err = analyzeWorkspaceEntry(ctx, root, entry, open, includes, names, tokenCache)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
 	paths, err := workspaceSourceFiles(root)
 	if err != nil {
 		return nil, nil, err
 	}
 	selected := paths[:0]
 	for _, path := range paths {
+		if entry != "" && (filepath.Ext(path) != ".pwn" || workspacePathKey(path) == workspacePathKey(entry)) {
+			continue
+		}
 		if _, isOpen := open[workspacePathKey(path)]; !isOpen {
 			selected = append(selected, path)
 		}
@@ -147,23 +171,51 @@ func buildWorkspaceIndex(
 	if err != nil {
 		return nil, nil, err
 	}
-	var graph *analysis.Result
-	if entry != "" {
-		text, ok := open[workspacePathKey(entry)]
-		if !ok {
-			text, err = os.ReadFile(entry) //nolint:gosec // Entry comes from the resolved project manifest.
-		}
-		if err == nil {
-			graph, err = analysis.AnalyzeContext(ctx, text, analysis.Options{
-				URI: coresource.FileURI(entry), Includes: includes, Names: names, RetainExpanded: true,
-				Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache,
-			})
-		}
+	return workspace.Files, graph, nil
+}
+
+func analyzeWorkspaceEntry(
+	ctx context.Context,
+	root string,
+	entry string,
+	open map[string][]byte,
+	includes preprocess.IncludeResolver,
+	names sema.Resolver,
+	tokenCache *preprocess.TokenCache,
+) (*analysis.Result, error) {
+	text, ok := open[workspacePathKey(entry)]
+	var err error
+	if !ok {
+		text, err = os.ReadFile(entry) //nolint:gosec // Entry comes from the resolved project manifest.
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
-	return workspace.Files, graph, nil
+	return analysis.AnalyzeContext(ctx, text, analysis.Options{
+		URI: coresource.FileURI(entry), Includes: workspaceOverlayResolver{base: includes, open: open}, Names: names, RetainExpanded: true,
+		Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache,
+	})
+}
+
+type workspaceOverlayResolver struct {
+	base preprocess.IncludeResolver
+	open map[string][]byte
+}
+
+func (r workspaceOverlayResolver) Resolve(fromURI, path string, angle bool) ([]byte, string, bool) {
+	if r.base == nil {
+		return nil, "", false
+	}
+	content, uri, ok := r.base.Resolve(fromURI, path, angle)
+	if !ok {
+		return nil, "", false
+	}
+	if filename, err := coresource.URI(uri).Filename(); err == nil {
+		if overlay, found := r.open[workspacePathKey(filename)]; found {
+			content = overlay
+		}
+	}
+	return content, uri, true
 }
 
 func workspacePathKey(path string) string {

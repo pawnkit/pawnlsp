@@ -102,7 +102,7 @@ func BenchmarkDocumentDiagnostics50K(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(int64(len(text)))
 	for b.Loop() {
-		_ = server.documentDiagnosticItems(doc, true)
+		_ = server.documentDiagnosticItems(doc, true, nil)
 	}
 }
 

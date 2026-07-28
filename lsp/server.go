@@ -547,7 +547,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
 	s.schedulePublish(doc, s.snapshot)
-	s.startWorkspaceIndex(doc)
+	s.refreshWorkspaceIndex(doc)
 	return nil
 }
 

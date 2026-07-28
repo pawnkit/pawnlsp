@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.3 - 2026-07-28
+
+### Fixed
+
+- Use the entry include graph for open and closed file diagnostics.
+- Apply unsaved include changes to the workspace graph.
+- Avoid analysing every included file as a standalone program.
+
 ## 0.33.2 - 2026-07-28
 
 ### Fixed

@@ -28,12 +28,16 @@ func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
 		return s.respond(id, map[string]any{"kind": "full", "items": []any{}})
 	}
 	full := doc.fullReady()
+	graph := s.workspaceGraph(doc)
 	resultID := documentDiagnosticResultID(doc, full)
+	if graph != nil {
+		resultID += fmt.Sprintf(":%p", graph)
+	}
 	if params.PreviousResultID == resultID {
 		return s.respond(id, map[string]any{"kind": "unchanged", "resultId": resultID})
 	}
 	return s.respond(id, map[string]any{
-		"kind": "full", "resultId": resultID, "items": s.documentDiagnosticItems(doc, full),
+		"kind": "full", "resultId": resultID, "items": s.documentDiagnosticItems(doc, full, graph),
 	})
 }
 
@@ -140,7 +144,21 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 	return items
 }
 
-func (s *server) documentDiagnosticItems(doc *document, includeLint bool) []lspDiagnostic {
+func (s *server) workspaceGraph(doc *document) *analysis.Result {
+	if doc == nil || doc.Root == "" {
+		return nil
+	}
+	s.mu.Lock()
+	index := s.workspaces[doc.Root]
+	s.mu.Unlock()
+	if index == nil {
+		return nil
+	}
+	<-index.ready
+	return index.graph
+}
+
+func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph *analysis.Result) []lspDiagnostic {
 	index := doc.lineIndex()
 	capacity := 0
 	if includeLint {
@@ -149,6 +167,9 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool) []lspD
 	items := make([]lspDiagnostic, 0, capacity)
 	if includeLint {
 		for _, finding := range doc.Diagnostics {
+			if graph != nil && strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
+				continue
+			}
 			var documentation *lspCodeDescription
 			if strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
 				documentation = analysisDiagnosticDocumentation("")
@@ -166,7 +187,11 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool) []lspD
 			})
 		}
 	}
-	items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)...)
+	if graph != nil {
+		items = append(items, analysisGraphDiagnosticItems(graph)[coresource.URI(doc.URI)]...)
+	} else {
+		items = append(items, analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)...)
+	}
 	return dedupeDiagnostics(items)
 }
 
