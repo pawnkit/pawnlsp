@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.24 - 2026-07-28
+
+### Performance
+
+- Updated pawn-project to avoid rebuilding canonical paths.
+- Updated pawnlint to reduce function and reference indexing allocation.
+- Reduced warm SAFW editor linting from about 306 ms to about 289 ms and
+  allocations from about 125 MB to 96 MB on the reference machine.
+
 ## 0.33.23 - 2026-07-28
 
 ### Performance
