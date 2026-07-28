@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.21 - 2026-07-28
+
+### Fixed
+
+- Updated pawnlint so shared diagnostics use consistent Windows paths.
+
 ## 0.33.20 - 2026-07-28
 
 ### Performance

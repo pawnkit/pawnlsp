@@ -9,7 +9,7 @@ require (
 	github.com/pawnkit/pawn-project v0.3.1
 	github.com/pawnkit/pawnfmt v1.3.5
 	github.com/pawnkit/pawnkit-core v0.5.0
-	github.com/pawnkit/pawnlint v1.7.4
+	github.com/pawnkit/pawnlint v1.7.5
 )
 
 require (
