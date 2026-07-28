@@ -444,6 +444,8 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	root := t.TempDir()
 	mainPath := filepath.Join(root, "main.pwn")
 	brokenPath := filepath.Join(root, "broken.pwn")
+	apiPath := filepath.Join(root, "api.inc")
+	guardedPath := filepath.Join(root, "guarded.inc")
 	unrelatedPath := filepath.Join(root, "unrelated.pwn")
 	dependencyPath := filepath.Join(root, "dependencies", "stdlib", "open.mp.inc")
 	if err := os.MkdirAll(filepath.Dir(dependencyPath), 0o755); err != nil {
@@ -458,6 +460,12 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	if err := os.WriteFile(brokenPath, []byte("#include <open.mp>\nstock Value;\nstock Value;\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(apiPath, []byte("#define CORE_API_API\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(guardedPath, []byte("#if !defined CORE_API_API\n#error api.inc not loaded\n#endif\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(unrelatedPath, []byte("#include <not-installed>\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +473,7 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
-		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "#include \"broken.pwn\"\nmain() {}\n"},
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": "#include \"api.inc\"\n#include \"guarded.inc\"\n#include \"broken.pwn\"\nmain() {}\n"},
 	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
@@ -484,6 +492,9 @@ func TestServerReturnsWorkspaceDiagnostics(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "include-not-found") {
 		t.Fatalf("workspace diagnostics ignored the active include graph: %s", output.String())
+	}
+	if strings.Contains(output.String(), "api.inc not loaded") {
+		t.Fatalf("workspace diagnostics ignored the include guard state: %s", output.String())
 	}
 	if strings.Contains(output.String(), coresource.FileURI(dependencyPath).String()) {
 		t.Fatalf("workspace diagnostics included a dependency: %s", output.String())

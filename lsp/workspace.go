@@ -26,8 +26,10 @@ const (
 
 type workspaceIndex struct {
 	root   string
+	entry  string
 	ready  chan struct{}
 	files  map[coresource.URI]*analysis.Result
+	graph  *analysis.Result
 	err    error
 	cancel context.CancelFunc
 }
@@ -56,7 +58,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	index := &workspaceIndex{root: doc.Root, ready: make(chan struct{}), cancel: cancel}
+	index := &workspaceIndex{root: doc.Root, entry: doc.Entry, ready: make(chan struct{}), cancel: cancel}
 	s.workspaces[doc.Root] = index
 	open := make(map[string][]byte)
 	for _, current := range s.documents {
@@ -85,7 +87,9 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 				return
 			}
 		}
-		index.files, index.err = buildWorkspaceIndex(ctx, doc.Root, open, doc.Includes, doc.Names, s.tokenCache)
+		index.files, index.graph, index.err = buildWorkspaceIndex(
+			ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+		)
 	})
 }
 
@@ -105,14 +109,15 @@ func (s *server) restartWorkspaceIndex(doc *document) {
 func buildWorkspaceIndex(
 	ctx context.Context,
 	root string,
+	entry string,
 	open map[string][]byte,
 	includes preprocess.IncludeResolver,
 	names sema.Resolver,
 	tokenCache *preprocess.TokenCache,
-) (map[coresource.URI]*analysis.Result, error) {
+) (map[coresource.URI]*analysis.Result, *analysis.Result, error) {
 	paths, err := workspaceSourceFiles(root)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	selected := paths[:0]
 	for _, path := range paths {
@@ -125,7 +130,7 @@ func buildWorkspaceIndex(
 	snapshot := query.New()
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		text, err := os.ReadFile(path) //nolint:gosec // Paths come from the bounded workspace scan.
 		if err != nil {
@@ -139,9 +144,25 @@ func buildWorkspaceIndex(
 		TokenCache: tokenCache,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return workspace.Files, nil
+	var graph *analysis.Result
+	if entry != "" {
+		text, ok := open[entry]
+		if !ok {
+			text, err = os.ReadFile(entry) //nolint:gosec // Entry comes from the resolved project manifest.
+		}
+		if err == nil {
+			graph, err = analysis.AnalyzeContext(ctx, text, analysis.Options{
+				URI: coresource.FileURI(entry), Includes: includes, Names: names, RetainExpanded: true,
+				Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache,
+			})
+		}
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return workspace.Files, graph, nil
 }
 
 func (s *server) workspaceSymbols(id, raw json.RawMessage) error {

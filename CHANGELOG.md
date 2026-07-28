@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.1 - 2026-07-28
+
+### Fixed
+
+- Keep workspace diagnostics consistent when files are opened.
+- Respect include order and guards in closed-file diagnostics.
+- Mark inactive code with a dedicated semantic token.
+
 ## 0.33.0 - 2026-07-28
 
 ### Added

@@ -47,6 +47,7 @@ type document struct {
 	URI           string
 	Path          string
 	Root          string
+	Entry         string
 	Text          []byte
 	Buffer        *coresource.TextBuffer
 	Index         *coresource.LineIndex
@@ -141,22 +142,22 @@ func (r projectIncludeResolver) Resolve(fromURI, path string, angle bool) ([]byt
 	return content, coresource.FileURI(resolved).String(), true
 }
 
-func loadProjectContext(path string, extraRoots ...string) (preprocess.IncludeResolver, string, string) {
+func loadProjectContext(path string, extraRoots ...string) (preprocess.IncludeResolver, string, string, string) {
 	fsys := fsx.OS{}
 	project, err := projectmodel.Load(coresource.NewRegistry(), fsys, path, projectmodel.Options{
 		ManagedIncludeRoots: extraRoots,
 	})
 	if err != nil {
-		return nil, "", filepath.Dir(path)
+		return nil, "", filepath.Dir(path), ""
 	}
 	return projectIncludeResolver{
 		resolver: project.IncludeResolver(),
 		fsys:     fsys,
-	}, project.Selection().ProfileID, project.Root()
+	}, project.Selection().ProfileID, project.Root(), project.Paths().Entry
 }
 
 func loadProjectIncludes(path string, extraRoots ...string) (preprocess.IncludeResolver, string) {
-	resolver, profile, _ := loadProjectContext(path, extraRoots...)
+	resolver, profile, _, _ := loadProjectContext(path, extraRoots...)
 	return resolver, profile
 }
 
@@ -518,7 +519,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	includes, profile, root := loadProjectContext(path, s.managedRoots...)
+	includes, profile, root, entry := loadProjectContext(path, s.managedRoots...)
 	names := s.names
 	if resolver, ok := names.(apiNameResolver); ok {
 		resolver.profile = profile
@@ -527,7 +528,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	text := []byte(params.TextDocument.Text)
 	buffer := coresource.NewTextBuffer(text)
 	doc := &document{
-		URI: params.TextDocument.URI, Path: path, Root: root, Text: text,
+		URI: params.TextDocument.URI, Path: path, Root: root, Entry: entry, Text: text,
 		Buffer: buffer, Index: coresource.NewBufferedLineIndex(buffer),
 		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
@@ -606,7 +607,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 		index = nextIndex
 	}
 	next := &document{
-		URI: doc.URI, Path: doc.Path, Root: doc.Root, Buffer: index.TextBuffer(), Index: index,
+		URI: doc.URI, Path: doc.Path, Root: doc.Root, Entry: doc.Entry, Buffer: index.TextBuffer(), Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: doc.Revision,
@@ -665,14 +666,14 @@ func (s *server) reloadProjects() error {
 	s.mu.Unlock()
 
 	for _, doc := range documents {
-		includes, profile, root := loadProjectContext(doc.Path, s.managedRoots...)
+		includes, profile, root, entry := loadProjectContext(doc.Path, s.managedRoots...)
 		names := s.names
 		if resolver, ok := names.(apiNameResolver); ok {
 			resolver.profile = profile
 			names = resolver
 		}
 		next := &document{
-			URI: doc.URI, Path: doc.Path, Root: root, Text: doc.Text, Buffer: doc.Buffer, Index: doc.Index, Version: doc.Version,
+			URI: doc.URI, Path: doc.Path, Root: root, Entry: entry, Text: doc.Text, Buffer: doc.Buffer, Index: doc.Index, Version: doc.Version,
 			Includes: includes, Candidates: includeCandidates(includes), Names: names, Revision: revision,
 			ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		}

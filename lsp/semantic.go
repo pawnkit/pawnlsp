@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	semanticTokenTypes     = []string{"function", "variable", "parameter", "enum", "type", "macro", "comment"}
+	semanticTokenTypes     = []string{"function", "variable", "parameter", "enum", "type", "macro", "inactive"}
 	semanticTokenModifiers = []string{"declaration", "readonly", "deprecated", "defaultLibrary"}
 )
 
@@ -22,7 +22,7 @@ const (
 	semanticEnum
 	semanticType
 	semanticMacro
-	semanticComment
+	semanticInactive
 )
 
 const (
@@ -67,7 +67,7 @@ func collectSemanticTokens(doc *document) []semanticToken {
 		if span.File != doc.Analysis.File || span.Start >= span.End {
 			return
 		}
-		if tokenType != semanticComment && insideRanges(span.Start, span.End, inactive) {
+		if tokenType != semanticInactive && insideRanges(span.Start, span.End, inactive) {
 			return
 		}
 		key := [2]coresource.Offset{span.Start, span.End}
@@ -84,7 +84,7 @@ func collectSemanticTokens(doc *document) []semanticToken {
 			}
 			start, end := coresource.Offset(item.Start.Offset), coresource.Offset(item.End.Offset)
 			if insideRanges(start, end, inactive) {
-				add(coresource.Span{File: doc.Analysis.File, Start: start, End: end}, semanticComment, 0)
+				add(coresource.Span{File: doc.Analysis.File, Start: start, End: end}, semanticInactive, 0)
 			}
 		}
 	}

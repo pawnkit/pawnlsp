@@ -29,7 +29,7 @@ func TestCompletionIncludesProjectPaths(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(`{"entry":"main.pwn","pawnkit":{"schemaVersion":1,"includePaths":["include"]}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	resolver, _, _ := loadProjectContext(mainPath)
+	resolver, _, _, _ := loadProjectContext(mainPath)
 	provider, ok := resolver.(includeCandidateProvider)
 	if !ok || len(provider.Complete(coresource.FileURI(mainPath).String(), "YSI_Coding/y", true, 20)) != 1 {
 		t.Fatalf("project include completion is unavailable: %T", resolver)
