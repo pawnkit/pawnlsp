@@ -424,6 +424,42 @@ func TestRealProjectIncrementalAnalysisLatency(t *testing.T) {
 	t.Logf("warm editor lint took %s", time.Since(lintStarted))
 }
 
+func BenchmarkRealProjectWarmLint(b *testing.B) {
+	root := os.Getenv("PAWN_REAL_PROJECT_DIR")
+	if root == "" {
+		b.Skip("PAWN_REAL_PROJECT_DIR is not set")
+	}
+	entry := filepath.Join(root, "src", "safw.pwn")
+	text, err := os.ReadFile(entry)
+	if err != nil {
+		b.Fatal(err)
+	}
+	includes, _, projectRoot, resolvedEntry := loadProjectContext(entry)
+	graph, err := analyzeWorkspaceEntry(
+		context.Background(), projectRoot, resolvedEntry,
+		map[string][]byte{workspacePathKey(entry): text}, includes, nil,
+		preprocess.NewTokenCache(), nil,
+	)
+	if err != nil {
+		b.Fatal(err)
+	}
+	document := &document{
+		Path: entry, Root: projectRoot, Entry: resolvedEntry, Text: text,
+	}
+	cache := lintproject.NewParseCache()
+	if _, err := lintDocument(context.Background(), document, cache, graph); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, err := lintDocument(context.Background(), document, cache, graph); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func TestReusableWorkspaceGraphSurvivesPendingRefresh(t *testing.T) {
 	previous := &analysis.Result{}
 	pending := &workspaceIndex{previous: previous}

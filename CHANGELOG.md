@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.19 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to build call graphs from existing reference results.
+- Added a repeatable warm-lint benchmark for real projects.
+- Reduced warm SAFW editor linting from about 388 ms to about 382 ms on the
+  reference machine.
+
 ## 0.33.18 - 2026-07-28
 
 ### Performance
