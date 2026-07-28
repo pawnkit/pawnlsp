@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.25 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to reduce reference-index allocation and map growth.
+- Reduced warm SAFW editor linting from about 289 ms to about 271 ms and
+  allocations from about 96 MB to 92 MB on the reference machine.
+
 ## 0.33.24 - 2026-07-28
 
 ### Performance
