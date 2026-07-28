@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.39 - 2026-07-28
+
+### Fixed
+
+- Map references from expanded includes back to their source files.
+
 ## 0.33.38 - 2026-07-28
 
 ### Added

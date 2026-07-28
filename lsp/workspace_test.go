@@ -19,6 +19,15 @@ import (
 	lintproject "github.com/pawnkit/pawnlint/pkg/project"
 )
 
+type testIncludeResolver struct {
+	content []byte
+	uri     string
+}
+
+func (r testIncludeResolver) Resolve(_, _ string, _ bool) ([]byte, string, bool) {
+	return r.content, r.uri, true
+}
+
 func TestWorkspaceSourceFiles(t *testing.T) {
 	root := t.TempDir()
 	paths := []string{
@@ -46,6 +55,31 @@ func TestWorkspaceSourceFiles(t *testing.T) {
 	if !slices.Equal(files, want) {
 		t.Fatalf("files = %v, want %v", files, want)
 	}
+}
+
+func TestAnalysisSourceAtMapsExpandedInclude(t *testing.T) {
+	result := analysis.Analyze([]byte("#include <helper>\nmain() { return Shared; }\n"), analysis.Options{
+		URI: coresource.FileURI("/project/main.pwn"),
+		Includes: testIncludeResolver{
+			content: []byte("new Shared = 1;\n"),
+			uri:     coresource.FileURI("/project/helper.inc").String(),
+		},
+		RetainExpanded: true,
+	})
+	if result.ExpandedSymbols == nil {
+		t.Fatal("expanded symbols missing")
+	}
+	for _, item := range result.ExpandedSymbols.Symbols {
+		if item.Name != "Shared" {
+			continue
+		}
+		uri, text, ok := analysisSourceAt(result, item.Span.File)
+		if !ok || uri.String() != coresource.FileURI("/project/helper.inc").String() || !strings.Contains(string(text), "new Shared") {
+			t.Fatalf("include source = %q %q %v; file=%d files=%#v", uri, text, ok, item.Span.File, result.Preprocess.Files)
+		}
+		return
+	}
+	t.Fatal("included declaration missing")
 }
 
 func TestWorkspaceDiagnosticURIExcludesToolchainFiles(t *testing.T) {

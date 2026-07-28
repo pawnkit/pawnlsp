@@ -351,41 +351,47 @@ func (s *server) workspaceSymbols(id, raw json.RawMessage) error {
 func (s *server) workspaceOccurrences(name string) []workspaceOccurrence {
 	items := make([]workspaceOccurrence, 0)
 	seen := make(map[string]bool)
-	for uri, result := range s.workspaceResults() {
+	for _, result := range s.workspaceResults() {
 		if result == nil || result.Symbols == nil || result.Preprocess == nil {
 			continue
 		}
 		add := func(span coresource.Span, declaration bool) {
+			uri, text, ok := analysisSourceAt(result, span.File)
+			if !ok {
+				return
+			}
 			key := fmt.Sprintf("%s:%d:%d", uri, span.Start, span.End)
 			if seen[key] {
 				return
 			}
 			seen[key] = true
 			items = append(items, workspaceOccurrence{
-				uri: uri, text: result.Preprocess.Source, span: span, declaration: declaration,
+				uri: uri, text: text, span: span, declaration: declaration,
 			})
 		}
-		for _, item := range result.Symbols.Symbols {
-			scope, ok := result.Symbols.Scope(item.Scope)
-			if ok && scope.Kind == symbol.ScopeFile && item.Name == name {
-				add(item.Span, true)
-			}
-		}
-		for _, reference := range result.Symbols.References {
-			if reference.Name != name {
-				continue
-			}
-			if reference.Resolved != 0 {
-				item, ok := result.Symbols.Symbol(reference.Resolved)
-				if !ok {
-					continue
-				}
-				scope, ok := result.Symbols.Scope(item.Scope)
-				if !ok || scope.Kind != symbol.ScopeFile {
-					continue
+		for _, table := range navigationTables(result) {
+			for _, item := range table.Symbols {
+				scope, ok := table.Scope(item.Scope)
+				if ok && scope.Kind == symbol.ScopeFile && item.Name == name {
+					add(item.Span, true)
 				}
 			}
-			add(reference.Span, false)
+			for _, reference := range table.References {
+				if reference.Name != name {
+					continue
+				}
+				if reference.Resolved != 0 {
+					item, ok := table.Symbol(reference.Resolved)
+					if !ok {
+						continue
+					}
+					scope, ok := table.Scope(item.Scope)
+					if !ok || scope.Kind != symbol.ScopeFile {
+						continue
+					}
+				}
+				add(reference.Span, false)
+			}
 		}
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -395,6 +401,28 @@ func (s *server) workspaceOccurrences(name string) []workspaceOccurrence {
 		return items[i].uri.String() < items[j].uri.String()
 	})
 	return items
+}
+
+func analysisSourceAt(result *analysis.Result, file coresource.FileID) (coresource.URI, []byte, bool) {
+	if result == nil || result.Preprocess == nil {
+		return "", nil, false
+	}
+	index := int(file) - 1
+	if index >= 0 && index < len(result.Preprocess.Files) {
+		source := result.Preprocess.Files[index]
+		return coresource.URI(source.URI), source.Content, true
+	}
+	if result.Registry == nil {
+		return "", nil, false
+	}
+	uri, ok := result.Registry.URI(file)
+	if !ok {
+		return "", nil, false
+	}
+	if file == result.File {
+		return uri, result.Preprocess.Source, true
+	}
+	return "", nil, false
 }
 
 func (s *server) workspaceCompletionItems(items []map[string]any, prefix string) []map[string]any {
