@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -63,7 +64,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 	open := make(map[string][]byte)
 	for _, current := range s.documents {
 		if current.Root == doc.Root {
-			open[current.Path] = append([]byte(nil), current.text()...)
+			open[workspacePathKey(current.Path)] = append([]byte(nil), current.text()...)
 		}
 	}
 	s.mu.Unlock()
@@ -121,7 +122,7 @@ func buildWorkspaceIndex(
 	}
 	selected := paths[:0]
 	for _, path := range paths {
-		if _, isOpen := open[path]; !isOpen {
+		if _, isOpen := open[workspacePathKey(path)]; !isOpen {
 			selected = append(selected, path)
 		}
 	}
@@ -148,7 +149,7 @@ func buildWorkspaceIndex(
 	}
 	var graph *analysis.Result
 	if entry != "" {
-		text, ok := open[entry]
+		text, ok := open[workspacePathKey(entry)]
 		if !ok {
 			text, err = os.ReadFile(entry) //nolint:gosec // Entry comes from the resolved project manifest.
 		}
@@ -163,6 +164,14 @@ func buildWorkspaceIndex(
 		}
 	}
 	return workspace.Files, graph, nil
+}
+
+func workspacePathKey(path string) string {
+	key := filepath.Clean(filepath.FromSlash(strings.ReplaceAll(path, `\`, "/")))
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	return key
 }
 
 func (s *server) workspaceSymbols(id, raw json.RawMessage) error {

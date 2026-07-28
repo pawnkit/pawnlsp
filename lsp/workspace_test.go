@@ -52,3 +52,11 @@ func TestWorkspaceDiagnosticURIExcludesToolchainFiles(t *testing.T) {
 		t.Fatalf("project file excluded: %s", path)
 	}
 }
+
+func TestWorkspacePathKeyAcceptsBothSeparators(t *testing.T) {
+	slashed := workspacePathKey(`C:/project/src/main.pwn`)
+	backslashed := workspacePathKey(`C:\project\src\main.pwn`)
+	if slashed != backslashed {
+		t.Fatalf("path keys differ: %q != %q", slashed, backslashed)
+	}
+}

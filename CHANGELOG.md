@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.2 - 2026-07-28
+
+### Fixed
+
+- Matched open documents to normalized project paths on Windows.
+
 ## 0.33.1 - 2026-07-28
 
 ### Fixed
