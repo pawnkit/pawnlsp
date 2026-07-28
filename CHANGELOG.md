@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.12 - 2026-07-28
+
+### Performance
+
+- Reused pawn-analysis results for semantic lint checks through pawnlint
+  v1.5.0.
+
 ## 0.33.11 - 2026-07-28
 
 ### Performance
