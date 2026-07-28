@@ -2,6 +2,16 @@
 
 Notable changes are recorded here.
 
+## 0.33.32 - 2026-07-28
+
+### Performance
+
+- Reuse bounded include resolutions between warm lint runs.
+- Invalidate those resolutions with watched files and project settings.
+- Reduced warm SAFW editor linting from about 191 ms to about 173 ms,
+  allocations from about 82 MB to 79 MB, and allocation count from about
+  352,000 to 323,000 on the reference machine.
+
 ## 0.33.31 - 2026-07-28
 
 ### Performance
