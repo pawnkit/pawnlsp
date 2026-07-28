@@ -521,7 +521,14 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	}
 	includes, profile, root, entry := loadProjectContext(path, s.managedRoots...)
 	names := s.names
-	if resolver, ok := names.(apiNameResolver); ok {
+	candidates := includeCandidates(includes)
+	if active := s.activeProjectDocument(path); active != nil {
+		includes = active.Includes
+		candidates = active.Candidates
+		names = active.Names
+		root = active.Root
+		entry = active.Entry
+	} else if resolver, ok := names.(apiNameResolver); ok {
 		resolver.profile = profile
 		names = resolver
 	}
@@ -530,7 +537,7 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	doc := &document{
 		URI: params.TextDocument.URI, Path: path, Root: root, Entry: entry, Text: text,
 		Buffer: buffer, Index: coresource.NewBufferedLineIndex(buffer),
-		Version: params.TextDocument.Version, Includes: includes, Candidates: includeCandidates(includes), Names: names,
+		Version: params.TextDocument.Version, Includes: includes, Candidates: candidates, Names: names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision: s.projectRevision,
 	}
@@ -549,6 +556,44 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	s.refreshWorkspaceIndex(doc)
 	s.schedulePublish(doc, s.snapshot)
 	return nil
+}
+
+func (s *server) activeProjectDocument(path string) *document {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var selected *document
+	for _, doc := range s.documents {
+		if doc.Root == "" || doc.Entry == "" {
+			continue
+		}
+		relative, err := filepath.Rel(doc.Root, path)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		index := s.workspaces[doc.Root]
+		if !ignoredWorkspacePath(relative) && !workspaceGraphContains(index, path) {
+			continue
+		}
+		if selected == nil || len(doc.Root) > len(selected.Root) {
+			selected = doc
+		}
+	}
+	return selected
+}
+
+func workspaceGraphContains(index *workspaceIndex, path string) bool {
+	if index == nil || index.graph == nil || index.graph.Preprocess == nil {
+		return false
+	}
+	target := workspacePathKey(path)
+	for _, file := range index.graph.Preprocess.Files {
+		uri := coresource.URI(file.URI)
+		filename, err := uri.Filename()
+		if err == nil && workspacePathKey(filename) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *server) didChange(raw json.RawMessage) error {
@@ -644,7 +689,26 @@ func (s *server) didClose(raw json.RawMessage) error {
 	}
 	s.mu.Lock()
 	delete(s.documents, params.TextDocument.URI)
+	inUse := false
+	if doc != nil {
+		for _, current := range s.documents {
+			if current.Root == doc.Root {
+				inUse = true
+				break
+			}
+		}
+	}
+	if doc != nil && !inUse {
+		if index := s.workspaces[doc.Root]; index != nil && index.cancel != nil {
+			index.cancel()
+		}
+		delete(s.workspaces, doc.Root)
+	}
 	s.mu.Unlock()
+	if doc == nil || !inUse {
+		s.requestDiagnosticRefresh()
+		return nil
+	}
 	s.restartWorkspaceIndex(doc)
 	return nil
 }

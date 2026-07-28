@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.36 - 2026-07-28
+
+### Fixed
+
+- Keep nested dependency files in the active project context.
+- Remove workspace indexes after their last document closes.
+
 ## 0.33.35 - 2026-07-28
 
 ### Performance

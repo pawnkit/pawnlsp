@@ -165,6 +165,49 @@ func TestWorkspaceEntryReusesPreviousAnalysis(t *testing.T) {
 	}
 }
 
+func TestActiveProjectOwnsNestedDependency(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "dependencies", "library", "include.inc")
+	parent := &document{Root: root, Entry: filepath.Join(root, "main.pwn")}
+	s := &server{
+		documents:  map[string]*document{"main": parent},
+		workspaces: map[string]*workspaceIndex{root: {root: root}},
+	}
+	if selected := s.activeProjectDocument(path); selected != parent {
+		t.Fatalf("selected = %p, want parent project %p", selected, parent)
+	}
+}
+
+func TestCloseRemovesUnusedWorkspace(t *testing.T) {
+	root := t.TempDir()
+	uri := coresource.FileURI(filepath.Join(root, "main.pwn")).String()
+	cancelled := false
+	s := &server{
+		documents: map[string]*document{uri: {URI: uri, Root: root}},
+		workspaces: map[string]*workspaceIndex{root: {
+			root: root,
+			cancel: func() {
+				cancelled = true
+			},
+		}},
+	}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.didClose(params); err != nil {
+		t.Fatal(err)
+	}
+	if !cancelled {
+		t.Fatal("workspace analysis was not cancelled")
+	}
+	if len(s.workspaces) != 0 {
+		t.Fatalf("workspaces = %d, want 0", len(s.workspaces))
+	}
+}
+
 func TestRealProjectWorkspaceDiagnostics(t *testing.T) {
 	root := os.Getenv("PAWN_REAL_PROJECT_DIR")
 	if root == "" {
@@ -207,17 +250,31 @@ func TestRealProjectProtocolResults(t *testing.T) {
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
 		"textDocument": map[string]any{"uri": uri, "version": 1, "text": string(text)},
 	}})
-	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/semanticTokens/full", "params": map[string]any{
 		"textDocument": map[string]any{"uri": uri},
 	}})
+	dependency := filepath.Join(root, "server", "dependencies", "amx_assembly", "amx.inc")
+	dependencyText, err := os.ReadFile(dependency)
+	if err != nil {
+		t.Fatal(err)
+	}
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{
+			"uri": coresource.FileURI(dependency).String(), "version": 1, "text": string(dependencyText),
+		},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didClose", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(dependency).String()},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "workspace/diagnostic", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
 	var output bytes.Buffer
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"not loaded", `"format" expects 4 arguments`} {
+	for _, value := range []string{"not loaded", `"format" expects 4 arguments`, "Unsupported `cellbits`", "include target not found: core"} {
 		if strings.Contains(output.String(), value) {
 			t.Errorf("protocol output contains %q", value)
 		}
