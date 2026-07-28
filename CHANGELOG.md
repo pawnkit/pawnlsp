@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.27 - 2026-07-28
+
+### Performance
+
+- Bound cached lint analysis generations during long editor sessions.
+
 ## 0.33.26 - 2026-07-28
 
 ### Performance
