@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.14 - 2026-07-28
+
+### Performance
+
+- Updated pawn-analysis to avoid copying expanded parser tokens.
+- Reduced the SAFW cold workspace diagnostic response from about 10.7 seconds
+  to 7.2 seconds on the reference machine.
+
 ## 0.33.13 - 2026-07-28
 
 ### Performance
