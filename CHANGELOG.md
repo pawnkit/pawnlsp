@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.15 - 2026-07-28
+
+### Performance
+
+- Updated pawn-analysis for lower preprocessor allocation.
+- Reduced the SAFW cold workspace diagnostic response from about 7.2 seconds
+  to 3.9 seconds on the reference machine.
+
 ## 0.33.14 - 2026-07-28
 
 ### Performance
