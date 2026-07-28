@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.28 - 2026-07-28
+
+### Performance
+
+- Reuse adjacent define environments during lint project construction.
+- Reduced warm SAFW editor linting from about 250 ms to about 230 ms on the
+  reference machine.
+
 ## 0.33.27 - 2026-07-28
 
 ### Performance
