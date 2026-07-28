@@ -6,11 +6,12 @@ import (
 
 	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
+	"github.com/pawnkit/pawn-parser/token"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
 var (
-	semanticTokenTypes     = []string{"function", "variable", "parameter", "enum", "type", "macro"}
+	semanticTokenTypes     = []string{"function", "variable", "parameter", "enum", "type", "macro", "comment"}
 	semanticTokenModifiers = []string{"declaration", "readonly", "deprecated", "defaultLibrary"}
 )
 
@@ -21,6 +22,7 @@ const (
 	semanticEnum
 	semanticType
 	semanticMacro
+	semanticComment
 )
 
 const (
@@ -58,10 +60,14 @@ func collectSemanticTokens(doc *document) []semanticToken {
 	if table == nil {
 		return nil
 	}
+	inactive := inactiveBranchRanges(doc)
 	tokens := make([]semanticToken, 0, len(table.Symbols)+len(table.References))
 	seen := make(map[[2]coresource.Offset]bool)
 	add := func(span coresource.Span, tokenType, modifiers int) {
 		if span.File != doc.Analysis.File || span.Start >= span.End {
+			return
+		}
+		if tokenType != semanticComment && insideRanges(span.Start, span.End, inactive) {
 			return
 		}
 		key := [2]coresource.Offset{span.Start, span.End}
@@ -70,6 +76,17 @@ func collectSemanticTokens(doc *document) []semanticToken {
 		}
 		seen[key] = true
 		tokens = append(tokens, semanticToken{start: span.Start, end: span.End, tokenType: tokenType, modifiers: modifiers})
+	}
+	if doc.Analysis.Preprocess != nil {
+		for _, item := range doc.Analysis.Preprocess.OriginalTokens {
+			if item.Kind == token.EOF {
+				continue
+			}
+			start, end := coresource.Offset(item.Start.Offset), coresource.Offset(item.End.Offset)
+			if insideRanges(start, end, inactive) {
+				add(coresource.Span{File: doc.Analysis.File, Start: start, End: end}, semanticComment, 0)
+			}
+		}
 	}
 	for _, item := range table.Symbols {
 		tokenType, modifiers := semanticSymbol(item)
@@ -101,6 +118,44 @@ func collectSemanticTokens(doc *document) []semanticToken {
 		return tokens[i].start < tokens[j].start
 	})
 	return tokens
+}
+
+type semanticRange struct {
+	start coresource.Offset
+	end   coresource.Offset
+}
+
+func inactiveBranchRanges(doc *document) []semanticRange {
+	if doc == nil || doc.Analysis == nil || doc.Analysis.Preprocess == nil {
+		return nil
+	}
+	var ranges []semanticRange
+	for _, branch := range doc.Analysis.Preprocess.Branches {
+		if branch.File != 0 || branch.Active || branch.BodySpan.Start >= branch.BodySpan.End {
+			continue
+		}
+		ranges = append(ranges, semanticRange{
+			start: coresource.Offset(branch.BodySpan.Start),
+			end:   coresource.Offset(branch.BodySpan.End),
+		})
+	}
+	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })
+	merged := ranges[:0]
+	for _, item := range ranges {
+		if len(merged) == 0 || item.start > merged[len(merged)-1].end {
+			merged = append(merged, item)
+			continue
+		}
+		if item.end > merged[len(merged)-1].end {
+			merged[len(merged)-1].end = item.end
+		}
+	}
+	return merged
+}
+
+func insideRanges(start, end coresource.Offset, ranges []semanticRange) bool {
+	index := sort.Search(len(ranges), func(i int) bool { return ranges[i].end > start })
+	return index < len(ranges) && start >= ranges[index].start && end <= ranges[index].end
 }
 
 func semanticSymbol(item symbol.Symbol) (int, int) {

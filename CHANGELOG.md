@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.0 - 2026-07-28
+
+### Added
+
+- Dim source excluded by conditional compilation.
+
 ## 0.32.13 - 2026-07-26
 
 ### Fixed
