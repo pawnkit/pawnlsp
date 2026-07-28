@@ -423,3 +423,17 @@ func TestRealProjectIncrementalAnalysisLatency(t *testing.T) {
 	}
 	t.Logf("warm editor lint took %s", time.Since(lintStarted))
 }
+
+func TestReusableWorkspaceGraphSurvivesPendingRefresh(t *testing.T) {
+	previous := &analysis.Result{}
+	pending := &workspaceIndex{previous: previous}
+	if got := reusableWorkspaceGraph(pending); got != previous {
+		t.Fatalf("graph = %p, want previous %p", got, previous)
+	}
+
+	current := &analysis.Result{}
+	pending.graph = current
+	if got := reusableWorkspaceGraph(pending); got != current {
+		t.Fatalf("graph = %p, want current %p", got, current)
+	}
+}

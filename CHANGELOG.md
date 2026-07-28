@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.11 - 2026-07-28
+
+### Performance
+
+- Keep the last completed project graph while newer workspace refreshes are
+  pending.
+
 ## 0.33.10 - 2026-07-28
 
 ### Performance

@@ -32,6 +32,7 @@ type workspaceIndex struct {
 	diagnosticsReady chan struct{}
 	files            map[coresource.URI]*analysis.Result
 	graph            *analysis.Result
+	previous         *analysis.Result
 	diagnosticErr    error
 	err              error
 	cancel           context.CancelFunc
@@ -76,6 +77,7 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, pr
 	ctx, cancel := context.WithCancel(context.Background())
 	index := &workspaceIndex{
 		root: doc.Root, entry: doc.Entry, ready: make(chan struct{}), diagnosticsReady: make(chan struct{}), cancel: cancel,
+		previous: previous,
 	}
 	s.workspaces[doc.Root] = index
 	open := make(map[string][]byte)
@@ -153,11 +155,21 @@ func (s *server) restartWorkspaceIndex(doc *document) {
 	var previous *analysis.Result
 	if current := s.workspaces[doc.Root]; current != nil && current.cancel != nil {
 		current.cancel()
-		previous = current.graph
+		previous = reusableWorkspaceGraph(current)
 	}
 	delete(s.workspaces, doc.Root)
 	s.mu.Unlock()
 	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous)
+}
+
+func reusableWorkspaceGraph(index *workspaceIndex) *analysis.Result {
+	if index == nil {
+		return nil
+	}
+	if index.graph != nil {
+		return index.graph
+	}
+	return index.previous
 }
 
 func buildWorkspaceIndex(
