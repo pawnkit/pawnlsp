@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.18 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to reuse content hashes across its project caches.
+- Reduced warm SAFW editor linting by about 11% on the reference machine.
+
 ## 0.33.17 - 2026-07-28
 
 ### Performance
