@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.20 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to sort combined call-graph edges once.
+- Reduced warm SAFW editor linting from about 382 ms to about 365 ms on the
+  reference machine.
+
 ## 0.33.19 - 2026-07-28
 
 ### Performance
