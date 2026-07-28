@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
 	"github.com/pawnkit/pawn-parser/token"
@@ -52,15 +53,15 @@ func (s *server) semanticTokens(id, raw json.RawMessage) error {
 	if doc == nil || doc.Analysis == nil {
 		return s.respond(id, map[string]any{"data": []int{}})
 	}
-	return s.respond(id, map[string]any{"data": encodeSemanticTokens(doc, collectSemanticTokens(doc))})
+	return s.respond(id, map[string]any{"data": encodeSemanticTokens(doc, collectSemanticTokens(doc, s.workspaceGraph(doc)))})
 }
 
-func collectSemanticTokens(doc *document) []semanticToken {
+func collectSemanticTokens(doc *document, graph *analysis.Result) []semanticToken {
 	table := navigationTable(doc.Analysis)
 	if table == nil {
 		return nil
 	}
-	inactive := inactiveBranchRanges(doc)
+	inactive := inactiveBranchRanges(doc, graph)
 	tokens := make([]semanticToken, 0, len(table.Symbols)+len(table.References))
 	seen := make(map[[2]coresource.Offset]bool)
 	add := func(span coresource.Span, tokenType, modifiers int) {
@@ -125,13 +126,24 @@ type semanticRange struct {
 	end   coresource.Offset
 }
 
-func inactiveBranchRanges(doc *document) []semanticRange {
+func inactiveBranchRanges(doc *document, graph *analysis.Result) []semanticRange {
 	if doc == nil || doc.Analysis == nil || doc.Analysis.Preprocess == nil {
 		return nil
 	}
+	result := doc.Analysis
+	var file uint32
+	if graph != nil && graph.Preprocess != nil {
+		for index, source := range graph.Preprocess.Files {
+			if source.URI == doc.URI {
+				result = graph
+				file = uint32(index)
+				break
+			}
+		}
+	}
 	var ranges []semanticRange
-	for _, branch := range doc.Analysis.Preprocess.Branches {
-		if branch.File != 0 || branch.Active || branch.BodySpan.Start >= branch.BodySpan.End {
+	for _, branch := range result.Preprocess.Branches {
+		if branch.File != file || branch.Active || branch.BodySpan.Start >= branch.BodySpan.End {
 			continue
 		}
 		ranges = append(ranges, semanticRange{

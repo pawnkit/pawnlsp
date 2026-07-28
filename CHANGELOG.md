@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.4 - 2026-07-28
+
+### Fixed
+
+- Use the entry include graph when highlighting inactive code.
+
 ## 0.33.3 - 2026-07-28
 
 ### Fixed
