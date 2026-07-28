@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.31 - 2026-07-28
+
+### Performance
+
+- Cache call ordering keys while building lint call graphs.
+- Resolve enclosing functions through per-file ranges.
+- Reduced warm SAFW editor linting from about 205 ms to about 191 ms on the
+  reference machine.
+
 ## 0.33.30 - 2026-07-28
 
 ### Performance
