@@ -405,12 +405,21 @@ func TestRealProjectIncrementalAnalysisLatency(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Fatalf("incremental analysis exceeded 2 seconds: %s", elapsed)
 	}
+	cache := lintproject.NewParseCache()
 	lintStarted := time.Now()
-	_, err = lintDocument(&document{
+	_, err = lintDocument(context.Background(), &document{
 		Path: entry, Root: projectRoot, Entry: resolvedEntry, Text: changed,
-	}, lintproject.NewParseCache(), current)
+	}, cache, current)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("full editor lint took %s", time.Since(lintStarted))
+	t.Logf("cold editor lint took %s", time.Since(lintStarted))
+	lintStarted = time.Now()
+	_, err = lintDocument(context.Background(), &document{
+		Path: entry, Root: projectRoot, Entry: resolvedEntry, Text: changed,
+	}, cache, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("warm editor lint took %s", time.Since(lintStarted))
 }

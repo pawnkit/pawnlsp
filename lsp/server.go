@@ -96,7 +96,7 @@ type server struct {
 	tokenCache      *preprocess.TokenCache
 	publishes       map[string]*publishQueue
 	nextRequestID   atomic.Uint64
-	lint            func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
+	lint            func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
 	analysisTrace   func(string, int, analysis.TraceEvent)
 }
 
@@ -820,7 +820,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	if lintFn == nil {
 		lintFn = lintDocument
 	}
-	diagnostics, err := lintFn(doc, s.parseCache, shared)
+	diagnostics, err := lintFn(ctx, doc, s.parseCache, shared)
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -1607,8 +1607,8 @@ func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
 	return out
 }
 
-func lintDocument(doc *document, cache *lintproject.ParseCache, shared *analysis.Result) ([]diagnostic.Diagnostic, error) {
-	return editor.DiagnoseWithCache(doc.Path, doc.text(), filepath.Dir(doc.Path), cache, shared)
+func lintDocument(ctx context.Context, doc *document, cache *lintproject.ParseCache, shared *analysis.Result) ([]diagnostic.Diagnostic, error) {
+	return editor.DiagnoseContextWithCache(ctx, doc.Path, doc.text(), filepath.Dir(doc.Path), cache, shared)
 }
 
 func (s *server) codeActions(id, raw json.RawMessage) error {

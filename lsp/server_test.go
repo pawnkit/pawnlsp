@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -238,7 +239,7 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 		snapshot:   query.New(query.Document{URI: uri, Text: text, Version: 1}),
 		parseCache: lintproject.NewParseCache(),
 		tokenCache: preprocess.NewTokenCache(),
-		lint: func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
+		lint: func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
 			close(lintStarted)
 			<-releaseLint
 			return nil, nil
@@ -273,6 +274,36 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	}
 }
 
+func TestPublishCancelsLint(t *testing.T) {
+	uri := coresource.FileURI("main.pwn")
+	text := []byte("main() {}\n")
+	doc := &document{
+		URI: uri.String(), Path: "main.pwn", Text: text, Version: 1,
+		ready: make(chan struct{}), analysisReady: make(chan struct{}),
+	}
+	lintStarted := make(chan struct{})
+	s := &server{
+		documents:  map[string]*document{doc.URI: doc},
+		snapshot:   query.New(query.Document{URI: uri, Text: text, Version: 1}),
+		parseCache: lintproject.NewParseCache(),
+		tokenCache: preprocess.NewTokenCache(),
+		lint: func(ctx context.Context, _ *document, _ *lintproject.ParseCache, _ *analysis.Result) ([]diagnostic.Diagnostic, error) {
+			close(lintStarted)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-lintStarted
+		cancel()
+	}()
+
+	if err := s.publish(ctx, doc, s.snapshot); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+}
+
 func TestPublishEmitsAnalysisTrace(t *testing.T) {
 	uri := coresource.FileURI("main.pwn")
 	text := []byte("main() { return 1; }\n")
@@ -292,7 +323,7 @@ func TestPublishEmitsAnalysisTrace(t *testing.T) {
 			}
 			stages[event.Stage] = true
 		},
-		lint: func(*document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
+		lint: func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error) {
 			return nil, nil
 		},
 	}

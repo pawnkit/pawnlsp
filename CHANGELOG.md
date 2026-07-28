@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.9 - 2026-07-28
+
+### Performance
+
+- Cancel stale project linting when a newer document version arrives.
+- Keep the SAFW incremental analysis check and editor lint timings in the
+  real-project test.
+
 ## 0.33.8 - 2026-07-28
 
 ### Performance
