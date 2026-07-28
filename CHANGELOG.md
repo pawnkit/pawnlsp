@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.10 - 2026-07-28
+
+### Performance
+
+- Reused pawnlint's define-aware project state across editor passes.
+- Reduced warm SAFW linting from about 605 ms to 436-483 ms on the reference
+  machine.
+
 ## 0.33.9 - 2026-07-28
 
 ### Performance
