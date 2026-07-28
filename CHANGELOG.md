@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.37 - 2026-07-28
+
+### Fixed
+
+- Do not report guarded YSI include chains as cycles.
+- Do not apply native argument counts to macro-replaced calls.
+
 ## 0.33.36 - 2026-07-28
 
 ### Fixed

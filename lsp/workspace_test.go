@@ -228,8 +228,14 @@ func TestRealProjectWorkspaceDiagnostics(t *testing.T) {
 		if finding.Code == "pawn-analysis:preprocess/user-error" && strings.Contains(finding.Message, "not loaded") {
 			t.Errorf("unexpected include guard diagnostic: %s", finding.Message)
 		}
+		if finding.Code == "pawn-analysis:preprocess/include-cycle" {
+			t.Errorf("unexpected include cycle: %s", finding.Message)
+		}
 		if finding.Code == "pawn-analysis:sema/argument-count" && strings.Contains(finding.Message, `"format"`) {
 			t.Errorf("unexpected format diagnostic: %s", finding.Message)
+		}
+		if finding.Code == "pawn-analysis:sema/argument-count" && strings.Contains(finding.Message, `"SendClientMessage"`) {
+			t.Errorf("unexpected SendClientMessage diagnostic: %s", finding.Message)
 		}
 	}
 }
@@ -274,7 +280,10 @@ func TestRealProjectProtocolResults(t *testing.T) {
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{"not loaded", `"format" expects 4 arguments`, "Unsupported `cellbits`", "include target not found: core"} {
+	for _, value := range []string{
+		"not loaded", `"format" expects 4 arguments`, `"SendClientMessage" expects 3 arguments`,
+		"include cycle detected", "include cycle:", "Unsupported `cellbits`", "include target not found: core",
+	} {
 		if strings.Contains(output.String(), value) {
 			t.Errorf("protocol output contains %q", value)
 		}
