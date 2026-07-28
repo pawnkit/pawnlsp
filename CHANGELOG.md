@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.16 - 2026-07-28
+
+### Performance
+
+- Prepare pawnlint include parses in parallel from shared analysis tokens.
+- Reduced cold SAFW workspace diagnostics by about 8% on the reference
+  machine.
+
 ## 0.33.15 - 2026-07-28
 
 ### Performance
