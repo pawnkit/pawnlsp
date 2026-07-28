@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.23 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to use fixed-size analysis cache keys.
+- Reduced warm SAFW editor linting from about 337 ms to about 306 ms and
+  allocations from about 176 MB to 125 MB on the reference machine.
+
 ## 0.33.22 - 2026-07-28
 
 ### Fixed
