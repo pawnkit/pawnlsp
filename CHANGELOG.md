@@ -2,6 +2,15 @@
 
 Notable changes are recorded here.
 
+## 0.33.35 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to share callable-variant lookups across project files.
+- Reduced median warm SAFW editor linting from about 173 ms to 166 ms,
+  allocations from about 79 MB to 72 MB, and allocation count from about
+  320,000 to 308,000 on the reference machine.
+
 ## 0.33.34 - 2026-07-28
 
 ### Performance
