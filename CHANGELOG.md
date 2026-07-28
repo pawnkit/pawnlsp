@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.26 - 2026-07-28
+
+### Performance
+
+- Updated pawnlint to reuse immutable define contexts between diagnostics.
+- Reduced warm SAFW editor linting from about 271 ms to about 255 ms and
+  allocations from about 92 MB to 87 MB on the reference machine.
+
 ## 0.33.25 - 2026-07-28
 
 ### Performance
