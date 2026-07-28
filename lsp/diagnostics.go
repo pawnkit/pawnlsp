@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -59,7 +60,7 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 
 	items := make([]map[string]any, 0)
 	for _, index := range indexes {
-		<-index.ready
+		<-workspaceDiagnosticsReady(index)
 		if index.graph != nil {
 			for uri, diagnostics := range analysisGraphDiagnosticItems(index.graph) {
 				if !workspaceDiagnosticURI(index.root, uri) {
@@ -101,12 +102,16 @@ func workspaceDiagnosticURI(root string, uri coresource.URI) bool {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return false
 	}
-	for _, directory := range []string{"dependencies", "pawno"} {
-		if relative == directory || strings.HasPrefix(relative, directory+string(filepath.Separator)) {
-			return false
+	return !ignoredWorkspacePath(relative)
+}
+
+func ignoredWorkspacePath(path string) bool {
+	for part := range strings.SplitSeq(filepath.Clean(path), string(filepath.Separator)) {
+		if part == "dependencies" || part == "pawno" {
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 type lineIndexSet map[coresource.URI]*coresource.LineIndex
@@ -151,20 +156,39 @@ func analysisGraphDiagnosticItems(result *analysis.Result) map[coresource.URI][]
 }
 
 func (s *server) workspaceGraph(doc *document) *analysis.Result {
+	graph, _ := s.workspaceGraphContext(context.Background(), doc)
+	return graph
+}
+
+func (s *server) workspaceGraphContext(ctx context.Context, doc *document) (*analysis.Result, error) {
 	if doc == nil || doc.Root == "" {
-		return nil
+		return nil, nil
 	}
 	s.mu.Lock()
 	index := s.workspaces[doc.Root]
 	s.mu.Unlock()
 	if index == nil {
-		return nil
+		return nil, nil
 	}
-	<-index.ready
-	return index.graph
+	select {
+	case <-workspaceDiagnosticsReady(index):
+		return index.graph, index.diagnosticErr
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func workspaceDiagnosticsReady(index *workspaceIndex) <-chan struct{} {
+	if index.diagnosticsReady != nil {
+		return index.diagnosticsReady
+	}
+	return index.ready
 }
 
 func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph *analysis.Result) []lspDiagnostic {
+	if ignoredWorkspacePath(doc.Path) {
+		return []lspDiagnostic{}
+	}
 	index := doc.lineIndex()
 	capacity := 0
 	if includeLint {

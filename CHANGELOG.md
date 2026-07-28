@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.6 - 2026-07-28
+
+### Fixed
+
+- Exclude dependency directories at any project depth.
+- Move unrelated program indexing out of the diagnostic path.
+- Build workspace and open-document analysis concurrently.
+
 ## 0.33.5 - 2026-07-28
 
 ### Fixed

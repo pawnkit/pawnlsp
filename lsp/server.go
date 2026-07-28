@@ -546,8 +546,8 @@ func (s *server) didOpen(raw json.RawMessage) error {
 	s.mu.Lock()
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
-	s.schedulePublish(doc, s.snapshot)
 	s.refreshWorkspaceIndex(doc)
+	s.schedulePublish(doc, s.snapshot)
 	return nil
 }
 
@@ -622,6 +622,9 @@ func (s *server) didChange(raw json.RawMessage) error {
 	s.mu.Lock()
 	s.documents[next.URI] = next
 	s.mu.Unlock()
+	if next.Entry != "" {
+		s.restartWorkspaceIndex(next)
+	}
 	s.schedulePublishAfter(next, s.snapshot, documentPublishDebounce)
 	return nil
 }
@@ -790,13 +793,20 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 			s.analysisTrace(doc.URI, doc.Version, event)
 		}
 	}
-	shared, analysisErr := snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
-		URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
-		MaxOutputTokens: analysisOutputTokenLimit,
-		Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
-		TokenCache:      s.tokenCache,
-		Trace:           trace,
-	})
+	var shared *analysis.Result
+	var analysisErr error
+	if workspacePathKey(doc.Path) == workspacePathKey(doc.Entry) {
+		shared, analysisErr = s.workspaceGraphContext(ctx, doc)
+	}
+	if shared == nil && analysisErr == nil {
+		shared, analysisErr = snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
+			URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
+			MaxOutputTokens: analysisOutputTokenLimit,
+			Revision:        fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
+			TokenCache:      s.tokenCache,
+			Trace:           trace,
+		})
+	}
 	if analysisErr != nil {
 		return analysisErr
 	}

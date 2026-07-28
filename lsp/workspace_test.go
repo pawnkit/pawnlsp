@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	coresource "github.com/pawnkit/pawnkit-core/source"
@@ -48,6 +50,7 @@ func TestWorkspaceDiagnosticURIExcludesToolchainFiles(t *testing.T) {
 	root := t.TempDir()
 	for _, path := range []string{
 		filepath.Join(root, "dependencies", "library", "api.inc"),
+		filepath.Join(root, "server", "dependencies", "library", "api.inc"),
 		filepath.Join(root, "pawno", "include", "open.mp.inc"),
 	} {
 		if workspaceDiagnosticURI(root, coresource.FileURI(path)) {
@@ -56,6 +59,36 @@ func TestWorkspaceDiagnosticURIExcludesToolchainFiles(t *testing.T) {
 	}
 	if path := filepath.Join(root, "include", "project.inc"); !workspaceDiagnosticURI(root, coresource.FileURI(path)) {
 		t.Fatalf("project file excluded: %s", path)
+	}
+}
+
+func TestWorkspaceEntryKeepsUnrelatedProgramsOutOfGraph(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	unrelated := filepath.Join(root, "filterscripts", "other.pwn")
+	if err := os.MkdirAll(filepath.Dir(unrelated), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(entry, []byte("main() {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(unrelated, []byte("#error unrelated program\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	files, graph, err := buildWorkspaceIndex(context.Background(), root, entry, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph == nil {
+		t.Fatal("entry graph was not built")
+	}
+	if len(files) != 1 {
+		t.Fatalf("standalone files = %d, want 1", len(files))
+	}
+	for _, finding := range graph.Diagnostics {
+		if strings.Contains(finding.Message, "unrelated program") {
+			t.Fatalf("unrelated program was analysed: %+v", finding)
+		}
 	}
 }
 
@@ -189,6 +222,9 @@ func TestRealProjectProtocolResults(t *testing.T) {
 		}
 		if response.ID == 2 {
 			for _, report := range response.Result.Items {
+				if strings.Contains(filepath.ToSlash(report.URI), "/dependencies/") {
+					t.Errorf("workspace response included dependency %s", report.URI)
+				}
 				if _, ok := cleared[report.URI]; ok && len(report.Items) == 0 {
 					cleared[report.URI] = true
 				}
@@ -214,5 +250,68 @@ func TestRealProjectProtocolResults(t *testing.T) {
 		if !ok {
 			t.Errorf("workspace response did not clear %s", uri)
 		}
+	}
+}
+
+func TestRealProjectWorkspaceDiagnosticLatency(t *testing.T) {
+	root := os.Getenv("PAWN_REAL_PROJECT_DIR")
+	if root == "" {
+		t.Skip("PAWN_REAL_PROJECT_DIR is not set")
+	}
+	entry := filepath.Join(root, "src", "safw.pwn")
+	text, err := os.ReadFile(entry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	inputReader, inputWriter := io.Pipe()
+	outputReader, outputWriter := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- Run(inputReader, outputWriter)
+		_ = outputWriter.Close()
+	}()
+	var requests bytes.Buffer
+	frame(t, &requests, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &requests, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": coresource.FileURI(entry).String(), "version": 1, "text": string(text)},
+	}})
+	frame(t, &requests, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "workspace/diagnostic", "params": map[string]any{}})
+
+	started := time.Now()
+	written := make(chan error, 1)
+	go func() {
+		_, err := inputWriter.Write(requests.Bytes())
+		written <- err
+	}()
+	reader := bufio.NewReader(outputReader)
+	for {
+		body, err := readFrame(reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			ID int `json:"id"`
+		}
+		if json.Unmarshal(body, &response) == nil && response.ID == 2 {
+			break
+		}
+	}
+	if err := <-written; err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(started)
+	t.Logf("workspace diagnostics took %s", elapsed)
+	if elapsed > 15*time.Second {
+		t.Errorf("workspace diagnostics exceeded 15 seconds: %s", elapsed)
+	}
+	go func() {
+		_, _ = io.Copy(io.Discard, outputReader)
+	}()
+	var exit bytes.Buffer
+	frame(t, &exit, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+	_, _ = inputWriter.Write(exit.Bytes())
+	_ = inputWriter.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
 	}
 }

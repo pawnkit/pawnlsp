@@ -26,13 +26,15 @@ const (
 )
 
 type workspaceIndex struct {
-	root   string
-	entry  string
-	ready  chan struct{}
-	files  map[coresource.URI]*analysis.Result
-	graph  *analysis.Result
-	err    error
-	cancel context.CancelFunc
+	root             string
+	entry            string
+	ready            chan struct{}
+	diagnosticsReady chan struct{}
+	files            map[coresource.URI]*analysis.Result
+	graph            *analysis.Result
+	diagnosticErr    error
+	err              error
+	cancel           context.CancelFunc
 }
 
 type workspaceOccurrence struct {
@@ -72,7 +74,9 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	index := &workspaceIndex{root: doc.Root, entry: doc.Entry, ready: make(chan struct{}), cancel: cancel}
+	index := &workspaceIndex{
+		root: doc.Root, entry: doc.Entry, ready: make(chan struct{}), diagnosticsReady: make(chan struct{}), cancel: cancel,
+	}
 	s.workspaces[doc.Root] = index
 	open := make(map[string][]byte)
 	for _, current := range s.documents {
@@ -84,13 +88,17 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 
 	s.workers.Go(func() {
 		defer cancel()
-		defer close(index.ready)
-		select {
-		case <-doc.ready:
-		case <-ctx.Done():
-			index.err = ctx.Err()
-			return
+		diagnosticsClosed := false
+		closeDiagnostics := func() {
+			if !diagnosticsClosed {
+				close(index.diagnosticsReady)
+				diagnosticsClosed = true
+			}
 		}
+		defer func() {
+			closeDiagnostics()
+			close(index.ready)
+		}()
 		if delay > 0 {
 			timer := time.NewTimer(delay)
 			defer timer.Stop()
@@ -98,12 +106,38 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration) {
 			case <-timer.C:
 			case <-ctx.Done():
 				index.err = ctx.Err()
+				index.diagnosticErr = index.err
 				return
 			}
 		}
-		index.files, index.graph, index.err = buildWorkspaceIndex(
-			ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+		if doc.Entry != "" {
+			index.graph, index.diagnosticErr = analyzeWorkspaceEntry(
+				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+			)
+			closeDiagnostics()
+			if index.diagnosticErr != nil {
+				index.err = index.diagnosticErr
+				return
+			}
+			s.mu.Lock()
+			current := s.workspaces[doc.Root] == index
+			s.mu.Unlock()
+			if current {
+				s.requestDiagnosticRefresh()
+			}
+			index.files, index.err = analyzeWorkspaceFiles(
+				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+			)
+			return
+		}
+		index.files, index.err = analyzeWorkspaceFiles(
+			ctx, doc.Root, "", open, doc.Includes, doc.Names, s.tokenCache,
 		)
+		index.diagnosticErr = index.err
+		closeDiagnostics()
+		if index.err == nil {
+			s.requestDiagnosticRefresh()
+		}
 	})
 }
 
@@ -137,9 +171,22 @@ func buildWorkspaceIndex(
 			return nil, nil, err
 		}
 	}
+	files, err := analyzeWorkspaceFiles(ctx, root, entry, open, includes, names, tokenCache)
+	return files, graph, err
+}
+
+func analyzeWorkspaceFiles(
+	ctx context.Context,
+	root string,
+	entry string,
+	open map[string][]byte,
+	includes preprocess.IncludeResolver,
+	names sema.Resolver,
+	tokenCache *preprocess.TokenCache,
+) (map[coresource.URI]*analysis.Result, error) {
 	paths, err := workspaceSourceFiles(root)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	selected := paths[:0]
 	for _, path := range paths {
@@ -155,7 +202,7 @@ func buildWorkspaceIndex(
 	snapshot := query.New()
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		text, err := os.ReadFile(path) //nolint:gosec // Paths come from the bounded workspace scan.
 		if err != nil {
@@ -166,12 +213,12 @@ func buildWorkspaceIndex(
 	}
 	workspace, err := snapshot.AnalyzeWorkspace(ctx, analysis.Options{
 		Includes: includes, Names: names, Revision: root, MaxOutputTokens: analysisOutputTokenLimit,
-		TokenCache: tokenCache,
+		TokenCache: tokenCache, SkipSemantics: true,
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return workspace.Files, graph, nil
+	return workspace.Files, nil
 }
 
 func analyzeWorkspaceEntry(
