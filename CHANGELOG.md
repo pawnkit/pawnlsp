@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.47 - 2026-07-29
+
+### Fixed
+
+- Keep grouped `#define` alignment when formatting on save.
+
 ## 0.33.46 - 2026-07-29
 
 ### Added

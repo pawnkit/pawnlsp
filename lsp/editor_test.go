@@ -147,6 +147,31 @@ func TestRangeFormattingSpansTopLevelDeclarations(t *testing.T) {
 	}
 }
 
+func TestRangeFormattingPreservesMacroAlignment(t *testing.T) {
+	uri := "file:///main.pwn"
+	text := []byte("#define SHORT       1\n#define MUCH_LONGER 2\n")
+	doc := &document{URI: uri, Text: text}
+	var output bytes.Buffer
+	s := &server{out: &output, documents: map[string]*document{uri: doc}}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 0},
+			"end":   map[string]any{"line": 0, "character": 20},
+		},
+		"options": map[string]any{"tabSize": 4, "insertSpaces": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.rangeFormatting(json.RawMessage("1"), params); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"result":[]`) {
+		t.Fatalf("aligned range changed on save: %s", output.String())
+	}
+}
+
 func TestServerReturnsInlayHints(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "main() { SetPlayerPos(0, 1.0, 2.0, 3.0); }\n"
