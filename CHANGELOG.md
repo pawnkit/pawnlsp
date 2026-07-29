@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.57 - 2026-07-29
+
+### Performance
+
+- Reuse rebased parser syntax during incremental linting.
+
 ## 0.33.56 - 2026-07-29
 
 ### Performance
