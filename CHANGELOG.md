@@ -2,6 +2,16 @@
 
 Notable changes are recorded here.
 
+## 0.33.44 - 2026-07-29
+
+### Added
+
+- Show colour previews and a picker for `{RRGGBB}` colours inside strings.
+
+### Changed
+
+- Updated pawnfmt to align consecutive `#define` values by default.
+
 ## 0.33.43 - 2026-07-29
 
 ### Fixed

@@ -227,7 +227,7 @@ func TestServerUsesForwardedMacroSignatureForInlayHints(t *testing.T) {
 
 func TestServerReturnsPawnColors(t *testing.T) {
 	uri := tempDocumentURI(t)
-	text := "new red = 0xFF0000;\nnew translucent = 0x00FF0080;\n"
+	text := "new red = 0xFF0000;\nnew translucent = 0x00FF0080;\nnew message[] = \"{21D254}Ready\";\n"
 	var input bytes.Buffer
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
@@ -240,13 +240,24 @@ func TestServerReturnsPawnColors(t *testing.T) {
 		"color": map[string]any{"red": 1, "green": 0, "blue": 0, "alpha": 1},
 		"range": map[string]any{"start": map[string]any{"line": 0, "character": 10}, "end": map[string]any{"line": 0, "character": 18}},
 	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "textDocument/colorPresentation", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"color":        map[string]any{"red": 1, "green": 0, "blue": 0, "alpha": 1},
+		"range": map[string]any{
+			"start": map[string]any{"line": 2, "character": 17},
+			"end":   map[string]any{"line": 2, "character": 25},
+		},
+	}})
 	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
 
 	var output bytes.Buffer
 	if err := Run(&input, &output); err != nil {
 		t.Fatal(err)
 	}
-	for _, value := range []string{`"colorProvider":true`, `"red":1`, `"green":1`, `"alpha":0.5019607843137255`, `"label":"0xFF0000"`} {
+	for _, value := range []string{
+		`"colorProvider":true`, `"red":1`, `"green":1`,
+		`"alpha":0.5019607843137255`, `"label":"0xFF0000"`, `"label":"{FF0000}"`,
+	} {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("color output missing %q: %s", value, output.String())
 		}
