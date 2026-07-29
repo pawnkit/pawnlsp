@@ -188,14 +188,14 @@ func TestIncrementalPerformanceBudget(t *testing.T) {
 	slices.Sort(durations)
 	median := durations[len(durations)/2]
 	t.Logf("50K incremental diagnostics: median %s, peak %d MB, peak %d allocations", median, peakBytes/(1024*1024), peakAllocations)
-	if median > 2*time.Second {
-		t.Errorf("median latency %s exceeds 2s regression budget", median)
+	if median > time.Second {
+		t.Errorf("median latency %s exceeds 1s regression budget", median)
 	}
-	if peakBytes > 768*1024*1024 {
-		t.Errorf("allocated %d MB exceeds 768 MB regression budget", peakBytes/(1024*1024))
+	if peakBytes > 512*1024*1024 {
+		t.Errorf("allocated %d MB exceeds 512 MB regression budget", peakBytes/(1024*1024))
 	}
-	if peakAllocations > 2_000_000 {
-		t.Errorf("%d allocations exceed 2,000,000 regression budget", peakAllocations)
+	if peakAllocations > 1_250_000 {
+		t.Errorf("%d allocations exceed 1,250,000 regression budget", peakAllocations)
 	}
 }
 

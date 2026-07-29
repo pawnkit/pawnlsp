@@ -2,6 +2,17 @@
 
 Notable changes are recorded here.
 
+## 0.33.65 - 2026-07-29
+
+### Fixed
+
+- Resolve relative pawnlint config paths from the workspace.
+
+### Performance
+
+- Share compact syntax indexes between include contexts.
+- Tightened the incremental diagnostics regression budget.
+
 ## 0.33.64 - 2026-07-29
 
 ### Performance
