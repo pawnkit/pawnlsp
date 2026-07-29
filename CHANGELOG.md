@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.58 - 2026-07-29
+
+### Performance
+
+- Reduce memory used by incremental trivia diagnostics.
+
 ## 0.33.57 - 2026-07-29
 
 ### Performance
