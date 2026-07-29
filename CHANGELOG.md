@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.59 - 2026-07-29
+
+### Performance
+
+- Avoid copying shared tokens for rebased trivia edits.
+
 ## 0.33.58 - 2026-07-29
 
 ### Performance
