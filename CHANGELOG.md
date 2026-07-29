@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.55 - 2026-07-29
+
+### Performance
+
+- Reuse unchanged local symbols during compatible editor edits.
+
 ## 0.33.54 - 2026-07-29
 
 ### Performance
