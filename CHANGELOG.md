@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.67 - 2026-07-29
+
+### Performance
+
+- Updated pawn-analysis to reuse local semantic checks.
+- Added 100,000-line analysis benchmarks.
+- Reduced the idle delay before local analysis.
+
 ## 0.33.66 - 2026-07-29
 
 ### Performance

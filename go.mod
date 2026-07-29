@@ -3,7 +3,7 @@ module github.com/pawnkit/pawnlsp
 go 1.26.5
 
 require (
-	github.com/pawnkit/pawn-analysis v0.25.0
+	github.com/pawnkit/pawn-analysis v0.26.0
 	github.com/pawnkit/pawn-api v0.19.0
 	github.com/pawnkit/pawn-parser v1.5.5
 	github.com/pawnkit/pawn-project v0.3.2

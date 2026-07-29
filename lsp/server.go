@@ -106,7 +106,7 @@ type server struct {
 
 const (
 	analysisOutputTokenLimit = 8_000_000
-	documentPublishDebounce  = 100 * time.Millisecond
+	documentPublishDebounce  = 25 * time.Millisecond
 )
 
 type apiNameResolver struct {

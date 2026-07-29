@@ -53,6 +53,10 @@ func BenchmarkIncrementalDidChangeToAnalysis50K(b *testing.B) {
 	benchmarkIncrementalDidChange(b, 50_000, false)
 }
 
+func BenchmarkIncrementalDidChangeToAnalysis100K(b *testing.B) {
+	benchmarkIncrementalDidChange(b, 100_000, false)
+}
+
 func BenchmarkIncrementalIdentifierDidChangeToAnalysis50K(b *testing.B) {
 	server, doc, text := benchmarkLSPServer(b, 50_000)
 	editOffset := strings.LastIndex(string(text), "return result") + len("return ")
@@ -123,7 +127,16 @@ func BenchmarkIncrementalTriviaDidChangeToDiagnostics50K(b *testing.B) {
 }
 
 func BenchmarkIncrementalDidChangeStages50K(b *testing.B) {
-	server, doc, text := benchmarkLSPServer(b, 50_000)
+	benchmarkIncrementalDidChangeStages(b, 50_000)
+}
+
+func BenchmarkIncrementalDidChangeStages100K(b *testing.B) {
+	benchmarkIncrementalDidChangeStages(b, 100_000)
+}
+
+func benchmarkIncrementalDidChangeStages(b *testing.B, lines int) {
+	b.Helper()
+	server, doc, text := benchmarkLSPServer(b, lines)
 	editOffset := strings.LastIndex(string(text), "return 0")
 	line := strings.Count(string(text[:editOffset]), "\n")
 	durations := make(map[analysis.Stage]time.Duration)
@@ -252,6 +265,53 @@ func TestIncrementalPerformanceBudget(t *testing.T) {
 	}
 	if peakAllocations > 1_250_000 {
 		t.Errorf("%d allocations exceed 1,250,000 regression budget", peakAllocations)
+	}
+}
+
+func TestIncrementalAnalysisBudget100K(t *testing.T) {
+	if os.Getenv("PAWNKIT_PERFORMANCE_BUDGET") != "1" {
+		t.Skip("set PAWNKIT_PERFORMANCE_BUDGET=1 to run performance budgets")
+	}
+	server, doc, text := performanceLSPServer(t, 100_000)
+	editOffset := strings.LastIndex(string(text), "return 0")
+	line := strings.Count(string(text[:editOffset]), "\n")
+	durations := make([]time.Duration, 0, 7)
+
+	for iteration := range 7 {
+		version := iteration + 2
+		params, err := json.Marshal(map[string]any{
+			"textDocument": map[string]any{"uri": doc.URI, "version": version},
+			"contentChanges": []map[string]any{{
+				"range": map[string]any{
+					"start": map[string]any{"line": line, "character": 16},
+					"end":   map[string]any{"line": line, "character": 17},
+				},
+				"text": strconv.Itoa(iteration % 10),
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		started := time.Now()
+		if err := server.didChange(params); err != nil {
+			t.Fatal(err)
+		}
+		current := server.readyDocument(doc.URI)
+		durations = append(durations, time.Since(started))
+		if current == nil || current.Version != version || current.Analysis == nil {
+			t.Fatalf("version %d analysis was not ready", version)
+		}
+	}
+	server.fullReadyDocument(doc.URI)
+
+	slices.Sort(durations)
+	p50, p95 := percentiles(durations)
+	t.Logf("100K incremental analysis: p50 %s, p95 %s", p50, p95)
+	if p50 > 250*time.Millisecond {
+		t.Errorf("analysis p50 %s exceeds 250ms budget", p50)
+	}
+	if p95 > 500*time.Millisecond {
+		t.Errorf("analysis p95 %s exceeds 500ms budget", p95)
 	}
 }
 
