@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.54 - 2026-07-29
+
+### Performance
+
+- Reuse unchanged syntax during compatible editor edits.
+
 ## 0.33.53 - 2026-07-29
 
 ### Added
