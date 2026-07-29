@@ -53,6 +53,39 @@ func BenchmarkIncrementalDidChangeToAnalysis50K(b *testing.B) {
 	benchmarkIncrementalDidChange(b, 50_000, false)
 }
 
+func BenchmarkIncrementalTriviaDidChangeToDiagnostics50K(b *testing.B) {
+	server, doc, text := benchmarkLSPServer(b, 50_000)
+	editOffset := strings.LastIndex(string(text), "    return result")
+	line := strings.Count(string(text[:editOffset]), "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for iteration := 0; b.Loop(); iteration++ {
+		b.StopTimer()
+		version := iteration + 2
+		end, replacement := 4, "     "
+		if iteration%2 != 0 {
+			end, replacement = 5, "    "
+		}
+		params, err := json.Marshal(map[string]any{
+			"textDocument": map[string]any{"uri": doc.URI, "version": version},
+			"contentChanges": []map[string]any{{
+				"range": map[string]any{
+					"start": map[string]any{"line": line, "character": 0},
+					"end":   map[string]any{"line": line, "character": end},
+				},
+				"text": replacement,
+			}},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+
+		runBenchmarkChange(b, server, doc.URI, version, params, true)
+	}
+}
+
 func BenchmarkIncrementalDidChangeStages50K(b *testing.B) {
 	server, doc, text := benchmarkLSPServer(b, 50_000)
 	editOffset := strings.LastIndex(string(text), "return 0")

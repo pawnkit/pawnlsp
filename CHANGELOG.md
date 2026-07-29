@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.56 - 2026-07-29
+
+### Performance
+
+- Reuse compatible preprocessing and rebase syntax after whitespace edits.
+
 ## 0.33.55 - 2026-07-29
 
 ### Performance
