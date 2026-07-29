@@ -49,6 +49,15 @@ Pawn-analysis v0.4.3 reduces preprocessor allocation growth. The isolated
 analysis-ready benchmark allocates about 254 MB, while the full diagnostic path
 allocates about 305 MB.
 
+Pawn-analysis v0.21.0 records macro invocation ranges while preprocessing
+instead of recovering them from the expanded token stream. On SAFW, which
+expands to about 5.9 million tokens, incremental analysis fell from 200-227 ms
+to 80-126 ms. Warm lint remained at 158-212 ms.
+
+The generated 50,000-line benchmark takes 508-542 ms and allocates about
+260 MB. It has little macro expansion, so most of that time remains in parsing,
+symbol construction, linting, and garbage collection.
+
 Owned analysis snapshots remove one full-file copy from each editor revision.
 This is visible in allocations but does not remove the parser and lint work
 that still dominates the benchmark.
@@ -87,6 +96,10 @@ go tool pprof -top -alloc_space heap.pprof
 
 Do not commit profile files. Record the command, hardware, and useful findings
 when a change moves a bottleneck.
+
+The July 29 profile found most allocations in parser nodes, retained tokens,
+symbols, references, and preprocessor output. Cancellation after the original
+parse completes is observed in about 4-6 microseconds on the reference machine.
 
 For one run, stage timings can be written to the server log with:
 

@@ -2,6 +2,14 @@
 
 Notable changes are recorded here.
 
+## 0.33.51 - 2026-07-29
+
+### Performance
+
+- Updated pawn-analysis to retain macro invocation ranges during preprocessing.
+- Reduced SAFW incremental analysis from about 200-227 ms to 80-126 ms on the
+  reference machine.
+
 ## 0.33.50 - 2026-07-29
 
 ### Added
