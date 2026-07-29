@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.61 - 2026-07-29
+
+### Fixed
+
+- Accept open.mp API tag aliases such as `VEHICLE_TIRE_STATUS`.
+
 ## 0.33.60 - 2026-07-29
 
 ### Fixed
