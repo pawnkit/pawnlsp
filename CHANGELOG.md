@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.66 - 2026-07-29
+
+### Performance
+
+- Publish local analysis sooner after an edit.
+- Track P50 and P95 latency for 50,000-line editor changes.
+
 ## 0.33.65 - 2026-07-29
 
 ### Fixed

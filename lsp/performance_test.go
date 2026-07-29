@@ -53,6 +53,42 @@ func BenchmarkIncrementalDidChangeToAnalysis50K(b *testing.B) {
 	benchmarkIncrementalDidChange(b, 50_000, false)
 }
 
+func BenchmarkIncrementalIdentifierDidChangeToAnalysis50K(b *testing.B) {
+	server, doc, text := benchmarkLSPServer(b, 50_000)
+	editOffset := strings.LastIndex(string(text), "return result") + len("return ")
+	line := strings.Count(string(text[:editOffset]), "\n")
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(text)))
+	for iteration := 0; b.Loop(); iteration++ {
+		b.StopTimer()
+		version := iteration + 2
+		replacement := "gValue"
+		if iteration%2 != 0 {
+			replacement = "result"
+		}
+		params, err := json.Marshal(map[string]any{
+			"textDocument": map[string]any{"uri": doc.URI, "version": version},
+			"contentChanges": []map[string]any{{
+				"range": map[string]any{
+					"start": map[string]any{"line": line, "character": 11},
+					"end":   map[string]any{"line": line, "character": 17},
+				},
+				"text": replacement,
+			}},
+		})
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+
+		runBenchmarkChange(b, server, doc.URI, version, params, false)
+		b.StopTimer()
+		server.fullReadyDocument(doc.URI)
+		b.StartTimer()
+	}
+}
+
 func BenchmarkIncrementalTriviaDidChangeToDiagnostics50K(b *testing.B) {
 	server, doc, text := benchmarkLSPServer(b, 50_000)
 	editOffset := strings.LastIndex(string(text), "    return result")
@@ -149,11 +185,12 @@ func TestIncrementalPerformanceBudget(t *testing.T) {
 	server, doc, text := performanceLSPServer(t, 50_000)
 	editOffset := strings.LastIndex(string(text), "return 0")
 	line := strings.Count(string(text[:editOffset]), "\n")
-	durations := make([]time.Duration, 0, 3)
+	analysisDurations := make([]time.Duration, 0, 5)
+	fullDurations := make([]time.Duration, 0, 5)
 	var peakBytes uint64
 	var peakAllocations uint64
 
-	for iteration := range 3 {
+	for iteration := range 5 {
 		version := iteration + 2
 		params, err := json.Marshal(map[string]any{
 			"textDocument": map[string]any{"uri": doc.URI, "version": version},
@@ -175,21 +212,40 @@ func TestIncrementalPerformanceBudget(t *testing.T) {
 		if err := server.didChange(params); err != nil {
 			t.Fatal(err)
 		}
-		current := server.fullReadyDocument(doc.URI)
-		durations = append(durations, time.Since(started))
+		current := server.readyDocument(doc.URI)
+		analysisDurations = append(analysisDurations, time.Since(started))
+		if current == nil || current.Version != version || current.Analysis == nil {
+			t.Fatalf("version %d analysis was not ready", version)
+		}
+		current = server.fullReadyDocument(doc.URI)
+		fullDurations = append(fullDurations, time.Since(started))
 		runtime.ReadMemStats(&after)
 		if current == nil || current.Version != version || current.Analysis == nil {
-			t.Fatalf("version %d was not analyzed", version)
+			t.Fatalf("version %d diagnostics were not ready", version)
 		}
 		peakBytes = max(peakBytes, after.TotalAlloc-before.TotalAlloc)
 		peakAllocations = max(peakAllocations, after.Mallocs-before.Mallocs)
 	}
 
-	slices.Sort(durations)
-	median := durations[len(durations)/2]
-	t.Logf("50K incremental diagnostics: median %s, peak %d MB, peak %d allocations", median, peakBytes/(1024*1024), peakAllocations)
-	if median > time.Second {
-		t.Errorf("median latency %s exceeds 1s regression budget", median)
+	slices.Sort(analysisDurations)
+	slices.Sort(fullDurations)
+	analysisP50, analysisP95 := percentiles(analysisDurations)
+	fullP50, fullP95 := percentiles(fullDurations)
+	t.Logf(
+		"50K incremental edit: analysis p50 %s, p95 %s; full p50 %s, p95 %s; peak %d MB, peak %d allocations",
+		analysisP50, analysisP95, fullP50, fullP95, peakBytes/(1024*1024), peakAllocations,
+	)
+	if analysisP50 > 250*time.Millisecond {
+		t.Errorf("analysis p50 %s exceeds 250ms budget", analysisP50)
+	}
+	if analysisP95 > 300*time.Millisecond {
+		t.Errorf("analysis p95 %s exceeds 300ms budget", analysisP95)
+	}
+	if fullP50 > time.Second {
+		t.Errorf("full diagnostics p50 %s exceeds 1s regression budget", fullP50)
+	}
+	if fullP95 > 1200*time.Millisecond {
+		t.Errorf("full diagnostics p95 %s exceeds 1.2s regression budget", fullP95)
 	}
 	if peakBytes > 512*1024*1024 {
 		t.Errorf("allocated %d MB exceeds 512 MB regression budget", peakBytes/(1024*1024))
@@ -197,6 +253,12 @@ func TestIncrementalPerformanceBudget(t *testing.T) {
 	if peakAllocations > 1_250_000 {
 		t.Errorf("%d allocations exceed 1,250,000 regression budget", peakAllocations)
 	}
+}
+
+func percentiles(durations []time.Duration) (time.Duration, time.Duration) {
+	p50 := durations[len(durations)/2]
+	p95 := durations[(len(durations)*95+99)/100-1]
+	return p50, p95
 }
 
 func benchmarkIncrementalDidChange(b *testing.B, lines int, full bool) {
