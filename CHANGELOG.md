@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.64 - 2026-07-29
+
+### Performance
+
+- Updated pawnlint to reuse strict loop mutation checks.
+
 ## 0.33.63 - 2026-07-29
 
 ### Performance
