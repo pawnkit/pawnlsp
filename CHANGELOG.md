@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.60 - 2026-07-29
+
+### Fixed
+
+- Updated pawnlint to reduce strict-mode false positives and startup work.
+
 ## 0.33.59 - 2026-07-29
 
 ### Performance
