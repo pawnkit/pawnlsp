@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.48 - 2026-07-29
+
+### Fixed
+
+- Do not duplicate a leading file header when formatting on save.
+
 ## 0.33.47 - 2026-07-29
 
 ### Fixed

@@ -172,6 +172,31 @@ func TestRangeFormattingPreservesMacroAlignment(t *testing.T) {
 	}
 }
 
+func TestRangeFormattingDoesNotDuplicateHeader(t *testing.T) {
+	uri := "file:///main.pwn"
+	text := []byte("/* Project header. */\n#define SHORT 1\n#define MUCH_LONGER 2\n")
+	doc := &document{URI: uri, Text: text}
+	var output bytes.Buffer
+	s := &server{out: &output, documents: map[string]*document{uri: doc}}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range": map[string]any{
+			"start": map[string]any{"line": 1, "character": 0},
+			"end":   map[string]any{"line": 3, "character": 0},
+		},
+		"options": map[string]any{"tabSize": 4, "insertSpaces": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.rangeFormatting(json.RawMessage("1"), params); err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(output.String(), "Project header."); count != 1 {
+		t.Fatalf("header count = %d: %s", count, output.String())
+	}
+}
+
 func TestServerReturnsInlayHints(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "main() { SetPlayerPos(0, 1.0, 2.0, 3.0); }\n"
