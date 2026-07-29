@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.63 - 2026-07-29
+
+### Performance
+
+- Updated pawnlint to reduce strict-profile call graph and semantic evaluation work.
+
 ## 0.33.62 - 2026-07-29
 
 ### Performance
