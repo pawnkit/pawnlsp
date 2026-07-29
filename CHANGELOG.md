@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.43 - 2026-07-29
+
+### Fixed
+
+- Format source-control ranges that span several declarations.
+
 ## 0.33.42 - 2026-07-29
 
 ### Fixed

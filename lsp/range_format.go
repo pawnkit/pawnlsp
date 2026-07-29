@@ -51,9 +51,14 @@ func (s *server) onTypeFormatting(id, raw json.RawMessage) error {
 		return err
 	}
 	doc := s.document(params.TextDocument.URI)
-	offset, ok := documentOffset(doc, params.Position)
-	if !ok {
+	if doc == nil {
 		return s.respond(id, []textEdit{})
+	}
+	offset, err := doc.lineIndex().Offset(coresource.Position{
+		Line: params.Position.Line, Character: params.Position.Character,
+	}, coresource.UTF16)
+	if err != nil {
+		return s.respondError(id, -32602, err.Error())
 	}
 	return s.formatSelectedRange(id, doc, int(offset), int(offset), params.Options)
 }
