@@ -23,7 +23,7 @@ func (s *server) rangeFormatting(id, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	doc := s.readyDocument(params.TextDocument.URI)
+	doc := s.document(params.TextDocument.URI)
 	if doc == nil {
 		return s.respond(id, []textEdit{})
 	}
@@ -50,7 +50,7 @@ func (s *server) onTypeFormatting(id, raw json.RawMessage) error {
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	doc := s.readyDocument(params.TextDocument.URI)
+	doc := s.document(params.TextDocument.URI)
 	offset, ok := documentOffset(doc, params.Position)
 	if !ok {
 		return s.respond(id, []textEdit{})

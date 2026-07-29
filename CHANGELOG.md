@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.42 - 2026-07-29
+
+### Fixed
+
+- Do not wait for semantic analysis before range or on-type formatting.
+
 ## 0.33.41 - 2026-07-29
 
 ### Performance

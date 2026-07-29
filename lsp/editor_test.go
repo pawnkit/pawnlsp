@@ -2,8 +2,10 @@ package lsp
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	parser "github.com/pawnkit/pawn-parser"
@@ -84,6 +86,37 @@ func TestServerFormatsRangeAndOnType(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "new value = 1;") {
 		t.Fatalf("range formatting changed the unselected function: %s", output.String())
+	}
+}
+
+func TestRangeFormattingDoesNotWaitForAnalysis(t *testing.T) {
+	uri := "file:///main.pwn"
+	text := []byte("main(){new value=1;}\n")
+	doc := &document{URI: uri, Text: text, analysisReady: make(chan struct{})}
+	var output bytes.Buffer
+	s := &server{out: &output, documents: map[string]*document{uri: doc}}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 0},
+			"end":   map[string]any{"line": 1, "character": 0},
+		},
+		"options": map[string]any{"tabSize": 4, "insertSpaces": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- s.rangeFormatting(json.RawMessage("1"), params)
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("range formatting waited for analysis")
 	}
 }
 
