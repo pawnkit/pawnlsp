@@ -1062,19 +1062,24 @@ func (s *server) definition(id, raw json.RawMessage) error {
 			"range": offsetRange(nil, 0, 0),
 		})
 	}
+	name, _, _ := identifierAt(doc.text(), int(offset))
 	for _, table := range navigationTables(doc.Analysis) {
 		for _, ref := range table.References {
-			if ref.Resolved == 0 || ref.Span.File != doc.Analysis.File || !ref.Span.Contains(offset) {
+			if ref.Span.File != doc.Analysis.File || !ref.Span.Contains(offset) {
 				continue
 			}
 			decl, ok := table.Symbol(ref.Resolved)
+			if !ok || decl.Name != name {
+				decl, ok = uniqueSymbolByName(table, name)
+			}
 			if !ok {
 				break
 			}
-			return s.respond(id, analysisLocation(doc, decl.Span))
+			if _, span, found := localDeclarationSource(doc.Analysis, decl); found {
+				return s.respond(id, analysisLocation(doc, span))
+			}
 		}
 	}
-	name, _, _ := identifierAt(doc.text(), int(offset))
 	occurrences := s.workspaceOccurrences(name)
 	if workspaceDeclarationCount(occurrences) == 1 {
 		for _, occurrence := range occurrences {
@@ -1111,17 +1116,23 @@ func (s *server) hover(id, raw json.RawMessage) error {
 			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
+	name, start, end := identifierAt(doc.text(), int(offset))
 	item, _, ok := symbolAtAnalysis(doc.Analysis, doc.Analysis.File, offset)
-	if ok {
+	if ok && item.Name == name {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": hoverText(doc, item)},
-			"range":    offsetRange(doc.text(), int(item.Span.Start), int(item.Span.End)),
+			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
-	name, start, end := identifierAt(doc.text(), int(offset))
 	if macro, ok := doc.Analysis.Preprocess.Macros[name]; ok {
 		return s.respond(id, map[string]any{
 			"contents": map[string]any{"kind": "markdown", "value": macroHover(doc.Analysis.Preprocess, macro)},
+			"range":    offsetRange(doc.text(), start, end),
+		})
+	}
+	if contents, ok := declarationHoverByName(doc.Analysis, name); ok {
+		return s.respond(id, map[string]any{
+			"contents": map[string]any{"kind": "markdown", "value": contents},
 			"range":    offsetRange(doc.text(), start, end),
 		})
 	}
@@ -1148,6 +1159,29 @@ func (s *server) hover(id, raw json.RawMessage) error {
 		"contents": map[string]any{"kind": "markdown", "value": apiHover(entry)},
 		"range":    offsetRange(doc.text(), start, end),
 	})
+}
+
+func declarationHoverByName(result *analysis.Result, name string) (string, bool) {
+	if result == nil || result.Preprocess == nil || name == "" {
+		return "", false
+	}
+	kinds := []symbol.Kind{
+		symbol.KindNative, symbol.KindForward, symbol.KindPublic, symbol.KindStock, symbol.KindFunction,
+	}
+	for _, kind := range kinds {
+		for _, file := range result.Preprocess.Files {
+			span, ok := findDeclarationSpan(file.Content, symbol.Symbol{Name: name, Kind: kind})
+			if !ok {
+				continue
+			}
+			contents := "```pawn\n" + declarationText(file.Content, span) + "\n```"
+			if documentation := declarationDocumentation(file.Content, span); documentation != "" {
+				contents += "\n\n" + documentation
+			}
+			return contents, true
+		}
+	}
+	return "", false
 }
 
 func macroHover(result *preprocess.Result, macro preprocess.Macro) string {
@@ -1279,19 +1313,11 @@ func hoverText(doc *document, item symbol.Symbol) string {
 }
 
 func localDocumentation(result *analysis.Result, item symbol.Symbol) string {
-	if result == nil || result.Registry == nil || result.Preprocess == nil {
-		return ""
-	}
-	uri, ok := result.Registry.URI(item.Span.File)
+	text, span, ok := localDeclarationSource(result, item)
 	if !ok {
 		return ""
 	}
-	for _, file := range result.Preprocess.Files {
-		if file.URI == uri.String() {
-			return declarationDocumentation(file.Content, item.Span)
-		}
-	}
-	return ""
+	return declarationDocumentation(text, span)
 }
 
 func declarationDocumentation(text []byte, span coresource.Span) string {
@@ -1340,23 +1366,100 @@ func declarationDocumentation(text []byte, span coresource.Span) string {
 }
 
 func localDeclaration(result *analysis.Result, item symbol.Symbol) string {
-	if result == nil || result.Registry == nil || result.Preprocess == nil {
-		return ""
-	}
-	uri, ok := result.Registry.URI(item.Span.File)
+	text, span, ok := localDeclarationSource(result, item)
 	if !ok {
 		return ""
 	}
-	for _, file := range result.Preprocess.Files {
-		if file.URI != uri.String() {
+	if item.Kind == symbol.KindConstant {
+		return declarationLine(text, span)
+	}
+	return declarationText(text, span)
+}
+
+func localDeclarationSource(result *analysis.Result, item symbol.Symbol) ([]byte, coresource.Span, bool) {
+	if result == nil || result.Registry == nil || result.Preprocess == nil {
+		return nil, coresource.Span{}, false
+	}
+	uri, ok := result.Registry.URI(item.Span.File)
+	if ok {
+		for _, file := range result.Preprocess.Files {
+			if file.URI == uri.String() && spanDeclaresSymbol(file.Content, item) {
+				return file.Content, item.Span, true
+			}
+		}
+	}
+	for fileIndex, file := range result.Preprocess.Files {
+		if span, found := findDeclarationSpan(file.Content, item); found {
+			fileID, exists := result.Registry.Lookup(coresource.URI(file.URI))
+			if !exists && fileIndex == 0 {
+				fileID = result.File
+			}
+			span.File = fileID
+			return file.Content, span, true
+		}
+	}
+	return nil, coresource.Span{}, false
+}
+
+func spanDeclaresSymbol(text []byte, item symbol.Symbol) bool {
+	start, end := int(item.Span.Start), int(item.Span.End)
+	if start < 0 || end > len(text) || start >= end || string(text[start:end]) != item.Name {
+		return false
+	}
+	if !item.Kind.IsCallable() {
+		return true
+	}
+	lineStart := bytes.LastIndexByte(text[:start], '\n') + 1
+	return declarationPrefixMatches(item.Kind, strings.TrimSpace(string(text[lineStart:start])))
+}
+
+func findDeclarationSpan(text []byte, item symbol.Symbol) (coresource.Span, bool) {
+	for offset := 0; offset < len(text); {
+		index := bytes.Index(text[offset:], []byte(item.Name))
+		if index < 0 {
+			break
+		}
+		start := offset + index
+		end := start + len(item.Name)
+		offset = end
+		if !identifierBoundaries(text, start, end) {
 			continue
 		}
-		if item.Kind == symbol.KindConstant {
-			return declarationLine(file.Content, item.Span)
+		lineStart := bytes.LastIndexByte(text[:start], '\n') + 1
+		prefix := strings.TrimSpace(string(text[lineStart:start]))
+		if declarationPrefixMatches(item.Kind, prefix) {
+			return coresource.Span{Start: coresource.Offset(start), End: coresource.Offset(end)}, true
 		}
-		return declarationText(file.Content, item.Span)
 	}
-	return ""
+	return coresource.Span{}, false
+}
+
+func identifierBoundaries(text []byte, start, end int) bool {
+	return (start == 0 || !identifierByte(text[start-1])) &&
+		(end == len(text) || !identifierByte(text[end]))
+}
+
+func declarationPrefixMatches(kind symbol.Kind, prefix string) bool {
+	switch kind {
+	case symbol.KindNative:
+		return declarationKeywordPrefix(prefix, "native")
+	case symbol.KindForward:
+		return declarationKeywordPrefix(prefix, "forward")
+	case symbol.KindPublic:
+		return declarationKeywordPrefix(prefix, "public")
+	case symbol.KindStock:
+		return declarationKeywordPrefix(prefix, "stock")
+	case symbol.KindConstant:
+		return declarationKeywordPrefix(prefix, "const") || declarationKeywordPrefix(prefix, "#define")
+	case symbol.KindFunction:
+		return !strings.ContainsAny(prefix, ";{}")
+	default:
+		return false
+	}
+}
+
+func declarationKeywordPrefix(prefix, keyword string) bool {
+	return prefix == keyword || strings.HasPrefix(prefix, keyword+" ")
 }
 
 func declarationLine(text []byte, span coresource.Span) string {
@@ -1526,8 +1629,16 @@ func symbolAtAnalysis(result *analysis.Result, file coresource.FileID, offset co
 
 func symbolAt(table *symbol.Table, file coresource.FileID, offset coresource.Offset) (symbol.Symbol, bool) {
 	for _, ref := range table.References {
-		if ref.Resolved != 0 && ref.Span.File == file && ref.Span.Contains(offset) {
-			return table.Symbol(ref.Resolved)
+		if ref.Span.File != file || !ref.Span.Contains(offset) {
+			continue
+		}
+		if ref.Resolved != 0 {
+			if item, ok := table.Symbol(ref.Resolved); ok && item.Name == ref.Name {
+				return item, true
+			}
+		}
+		if item, ok := uniqueSymbolByName(table, ref.Name); ok {
+			return item, true
 		}
 	}
 	for _, item := range table.Symbols {
@@ -1536,6 +1647,20 @@ func symbolAt(table *symbol.Table, file coresource.FileID, offset coresource.Off
 		}
 	}
 	return symbol.Symbol{}, false
+}
+
+func uniqueSymbolByName(table *symbol.Table, name string) (symbol.Symbol, bool) {
+	var match symbol.Symbol
+	for _, item := range table.Symbols {
+		if item.Name != name || !item.Kind.IsCallable() {
+			continue
+		}
+		if match.ID != 0 {
+			return symbol.Symbol{}, false
+		}
+		match = item
+	}
+	return match, match.ID != 0
 }
 
 func symbolSummary(item symbol.Symbol) string {

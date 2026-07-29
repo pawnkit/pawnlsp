@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.45 - 2026-07-29
+
+### Fixed
+
+- Recover hover and definition targets for declarations in large dependency graphs.
+
 ## 0.33.44 - 2026-07-29
 
 ### Added

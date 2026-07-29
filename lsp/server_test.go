@@ -18,6 +18,7 @@ import (
 	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawn-analysis/query"
 	"github.com/pawnkit/pawn-analysis/sema"
+	"github.com/pawnkit/pawn-analysis/symbol"
 	"github.com/pawnkit/pawn-api/pawnapi"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 	"github.com/pawnkit/pawnlint/pkg/diagnostic"
@@ -967,6 +968,80 @@ func TestServerReturnsSharedHover(t *testing.T) {
 		if !strings.Contains(output.String(), value) {
 			t.Fatalf("missing %q: %s", value, output.String())
 		}
+	}
+}
+
+func TestServerReturnsIncludedNativeHover(t *testing.T) {
+	root := t.TempDir()
+	includeRoot := filepath.Join(root, "include")
+	if err := os.MkdirAll(includeRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	include := "// Formats a query with escaped values.\nnative mysql_format(MySQL:handle, output[], max_len, const format[], {Float,_}:...);\n"
+	if err := os.WriteFile(filepath.Join(includeRoot, "a_mysql.inc"), []byte(include), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := "#include <a_mysql>\nmain() { mysql_format(1, output, sizeof(output), \"%e\", value); }\n"
+	entry := filepath.Join(root, "main.pwn")
+	if err := os.WriteFile(entry, []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"entry":"main.pwn","pawnkit":{"schemaVersion":1,"includePaths":["include"]}}`
+	if err := os.WriteFile(filepath.Join(root, "pawn.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	uri := coresource.FileURI(entry).String()
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": source},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/hover", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 12},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 3, "method": "textDocument/definition", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri}, "position": map[string]any{"line": 1, "character": 12},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{
+		"native mysql_format(MySQL:handle, output[], max_len, const format[], {Float,_}:...)",
+		"Formats a query with escaped values.",
+		"a_mysql.inc",
+	} {
+		if !strings.Contains(output.String(), value) {
+			t.Fatalf("included native hover missing %q: %s", value, output.String())
+		}
+	}
+}
+
+func TestLocalDeclarationRecoversFromStaleMappedSpan(t *testing.T) {
+	root := []byte("main() { mysql_format(); }\n")
+	include := []byte("// Formats a query.\nnative mysql_format(handle, output[], size, const format[], ...);\n")
+	registry := coresource.NewRegistry()
+	rootID := registry.Intern(coresource.FileURI("main.pwn"))
+	registry.Intern(coresource.FileURI("a_mysql.inc"))
+	result := &analysis.Result{
+		File: rootID, Registry: registry,
+		Preprocess: &preprocess.Result{Files: []preprocess.FileInfo{
+			{URI: coresource.FileURI("main.pwn").String(), Content: root},
+			{URI: coresource.FileURI("a_mysql.inc").String(), Content: include},
+		}},
+	}
+	item := symbol.Symbol{
+		Name: "mysql_format", Kind: symbol.KindNative,
+		Span: coresource.Span{File: rootID, Start: 9, End: 21},
+	}
+	if got := localDeclaration(result, item); got != "native mysql_format(handle, output[], size, const format[], ...)" {
+		t.Fatalf("declaration = %q", got)
+	}
+	if got := localDocumentation(result, item); got != "Formats a query." {
+		t.Fatalf("documentation = %q", got)
 	}
 }
 
