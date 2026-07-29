@@ -242,6 +242,47 @@ func TestDocumentDiagnosticResultIDTracksReadiness(t *testing.T) {
 	}
 }
 
+func TestFormattingRunsWhileWorkspaceDiagnosticsArePending(t *testing.T) {
+	uri := coresource.FileURI("main.pwn").String()
+	diagnosticsReady := make(chan struct{})
+	ready := make(chan struct{})
+	var output bytes.Buffer
+	s := &server{
+		out: &output,
+		documents: map[string]*document{
+			uri: {URI: uri, Text: []byte("main() {}\n")},
+		},
+		workspaces: map[string]*workspaceIndex{
+			"/project": {
+				root: "/project", ready: ready, diagnosticsReady: diagnosticsReady,
+			},
+		},
+	}
+	if _, err := s.handle(message{
+		ID: json.RawMessage("1"), Method: "workspace/diagnostic",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"options":      map[string]any{"tabSize": 4, "insertSpaces": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.handle(message{
+		ID: json.RawMessage("2"), Method: "textDocument/formatting", Params: params,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"id":2`) {
+		t.Fatalf("formatting response was blocked by diagnostics: %s", output.String())
+	}
+	close(diagnosticsReady)
+	close(ready)
+	s.requests.Wait()
+}
+
 func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	uri := coresource.FileURI("main.pwn")
 	text := []byte("main() {}\n")

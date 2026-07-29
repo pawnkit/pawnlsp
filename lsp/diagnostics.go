@@ -60,7 +60,10 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 
 	items := make([]map[string]any, 0)
 	for _, index := range indexes {
-		<-workspaceDiagnosticsReady(index)
+		index = s.readyWorkspaceIndex(index)
+		if index == nil {
+			continue
+		}
 		if index.graph != nil {
 			for uri, diagnostics := range analysisGraphDiagnosticItems(index.graph) {
 				if !workspaceDiagnosticURI(index.root, uri) {
@@ -84,6 +87,20 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 		return left < right
 	})
 	return s.respond(id, map[string]any{"items": items})
+}
+
+func (s *server) readyWorkspaceIndex(index *workspaceIndex) *workspaceIndex {
+	for index != nil {
+		<-workspaceDiagnosticsReady(index)
+		s.mu.Lock()
+		current := s.workspaces[index.root]
+		s.mu.Unlock()
+		if current == index {
+			return index
+		}
+		index = current
+	}
+	return nil
 }
 
 func standaloneWorkspaceDiagnosticItems(uri coresource.URI, result *analysis.Result) []lspDiagnostic {

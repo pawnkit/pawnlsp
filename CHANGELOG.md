@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.49 - 2026-07-29
+
+### Performance
+
+- Do not queue formatting behind workspace or document diagnostics.
+
 ## 0.33.48 - 2026-07-29
 
 ### Fixed

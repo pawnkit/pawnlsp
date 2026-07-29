@@ -88,6 +88,7 @@ type server struct {
 	mu              sync.Mutex
 	writeMu         sync.Mutex
 	workers         sync.WaitGroup
+	requests        sync.WaitGroup
 	rules           *lint.Registrar
 	managedRoots    []string
 	workspaces      map[string]*workspaceIndex
@@ -390,10 +391,12 @@ func (s *server) handle(request message) (bool, error) {
 		return false, nil
 	case "shutdown":
 		s.shutdown = true
+		s.requests.Wait()
 		s.cancelDocuments()
 		s.workers.Wait()
 		return false, s.respond(request.ID, nil)
 	case "exit":
+		s.requests.Wait()
 		s.cancelDocuments()
 		s.workers.Wait()
 		return true, nil
@@ -412,7 +415,10 @@ func (s *server) handle(request message) (bool, error) {
 	case "workspace/symbol":
 		return false, s.workspaceSymbols(request.ID, request.Params)
 	case "workspace/diagnostic":
-		return false, s.workspaceDiagnostics(request.ID)
+		s.handleAsync(request, func() error {
+			return s.workspaceDiagnostics(request.ID)
+		})
+		return false, nil
 	case "textDocument/codeAction":
 		return false, s.codeActions(request.ID, request.Params)
 	case "textDocument/prepareCallHierarchy":
@@ -428,7 +434,10 @@ func (s *server) handle(request message) (bool, error) {
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
 	case "textDocument/diagnostic":
-		return false, s.documentDiagnostics(request.ID, request.Params)
+		s.handleAsync(request, func() error {
+			return s.documentDiagnostics(request.ID, request.Params)
+		})
+		return false, nil
 	case "textDocument/documentHighlight":
 		return false, s.documentHighlights(request.ID, request.Params)
 	case "textDocument/definition":
@@ -467,6 +476,16 @@ func (s *server) handle(request message) (bool, error) {
 		}
 		return false, s.respondError(request.ID, -32601, "method not found")
 	}
+}
+
+func (s *server) handleAsync(request message, handle func() error) {
+	s.requests.Go(func() {
+		if err := handle(); err != nil {
+			if responseErr := s.respondError(request.ID, -32602, err.Error()); responseErr != nil {
+				fmt.Fprintf(os.Stderr, "pawnlsp: %s: %v\n", request.Method, errors.Join(err, responseErr))
+			}
+		}
+	})
 }
 
 func (s *server) didChangeConfiguration(raw json.RawMessage) error {
