@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.62 - 2026-07-29
+
+### Performance
+
+- Updated pawnlint to reduce strict-profile token scans and allocations.
+
 ## 0.33.61 - 2026-07-29
 
 ### Fixed
