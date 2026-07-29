@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.52 - 2026-07-29
+
+### Performance
+
+- Updated pawnlint to reuse cached function parameter facts.
+
 ## 0.33.51 - 2026-07-29
 
 ### Performance
