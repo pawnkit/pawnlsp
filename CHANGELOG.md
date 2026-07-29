@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.41 - 2026-07-29
+
+### Performance
+
+- Avoid full-output parsing when formatting editor ranges.
+
 ## 0.33.40 - 2026-07-29
 
 ### Performance
