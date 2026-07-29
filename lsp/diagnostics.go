@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawnkit-core/diagnostic"
@@ -14,22 +16,31 @@ import (
 	lintdiagnostic "github.com/pawnkit/pawnlint/pkg/diagnostic"
 )
 
-func (s *server) documentDiagnostics(id, raw json.RawMessage) error {
+func (s *server) documentDiagnostics(ctx context.Context, id, raw json.RawMessage) error {
 	var params struct {
 		TextDocument struct {
 			URI string `json:"uri"`
 		} `json:"textDocument"`
-		PreviousResultID string `json:"previousResultId"`
+		PreviousResultID string          `json:"previousResultId"`
+		WorkDoneToken    json.RawMessage `json:"workDoneToken"`
 	}
 	if err := json.Unmarshal(raw, &params); err != nil {
 		return err
 	}
-	doc := s.readyDocument(params.TextDocument.URI)
+	progress := s.delayedProgress(params.WorkDoneToken, id, "Analysing Pawn document")
+	defer progress.finish()
+	doc, err := s.readyDocumentContext(ctx, params.TextDocument.URI)
+	if err != nil {
+		return err
+	}
 	if doc == nil {
 		return s.respond(id, map[string]any{"kind": "full", "items": []any{}})
 	}
 	full := doc.fullReady()
-	graph := s.workspaceGraph(doc)
+	graph, err := s.workspaceGraphContext(ctx, doc)
+	if err != nil {
+		return err
+	}
 	resultID := documentDiagnosticResultID(doc, full)
 	if graph != nil {
 		resultID += fmt.Sprintf(":%p", graph)
@@ -50,7 +61,16 @@ func documentDiagnosticResultID(doc *document, full bool) string {
 	return fmt.Sprintf("%d:%d:%s", doc.Revision, doc.Version, stage)
 }
 
-func (s *server) workspaceDiagnostics(id json.RawMessage) error {
+func (s *server) workspaceDiagnostics(ctx context.Context, id, raw json.RawMessage) error {
+	var params struct {
+		WorkDoneToken json.RawMessage `json:"workDoneToken"`
+	}
+	if err := json.Unmarshal(raw, &params); err != nil && len(raw) != 0 {
+		return err
+	}
+	progress := s.delayedProgress(params.WorkDoneToken, id, "Analysing Pawn workspace")
+	defer progress.finish()
+
 	s.mu.Lock()
 	indexes := make([]*workspaceIndex, 0, len(s.workspaces))
 	for _, index := range s.workspaces {
@@ -60,7 +80,11 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 
 	items := make([]map[string]any, 0)
 	for _, index := range indexes {
-		index = s.readyWorkspaceIndex(index)
+		var err error
+		index, err = s.readyWorkspaceIndex(ctx, index)
+		if err != nil {
+			return err
+		}
 		if index == nil {
 			continue
 		}
@@ -89,18 +113,118 @@ func (s *server) workspaceDiagnostics(id json.RawMessage) error {
 	return s.respond(id, map[string]any{"items": items})
 }
 
-func (s *server) readyWorkspaceIndex(index *workspaceIndex) *workspaceIndex {
+func (s *server) readyWorkspaceIndex(ctx context.Context, index *workspaceIndex) (*workspaceIndex, error) {
 	for index != nil {
-		<-workspaceDiagnosticsReady(index)
+		select {
+		case <-workspaceDiagnosticsReady(index):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 		s.mu.Lock()
 		current := s.workspaces[index.root]
 		s.mu.Unlock()
 		if current == index {
-			return index
+			return index, nil
 		}
 		index = current
 	}
-	return nil
+	return nil, nil
+}
+
+func (s *server) readyDocumentContext(ctx context.Context, uri string) (*document, error) {
+	for {
+		doc := s.document(uri)
+		if doc == nil || doc.analysisReady == nil {
+			return doc, nil
+		}
+		select {
+		case <-doc.analysisReady:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if s.document(uri) == doc {
+			return doc, nil
+		}
+	}
+}
+
+type delayedProgress struct {
+	server  *server
+	token   json.RawMessage
+	request json.RawMessage
+	title   string
+	timer   *time.Timer
+	mu      sync.Mutex
+	started bool
+	done    bool
+	create  bool
+}
+
+func (s *server) delayedProgress(token, request json.RawMessage, title string) *delayedProgress {
+	progress := &delayedProgress{server: s, token: token, request: request, title: title}
+	if (len(token) == 0 || string(token) == "null") && s.workDoneProgress {
+		value, _ := json.Marshal(fmt.Sprintf("pawn-analysis-%d", s.nextRequestID.Add(1)))
+		progress.token = value
+		progress.create = true
+	}
+	if len(progress.token) == 0 || string(progress.token) == "null" {
+		return progress
+	}
+	progress.timer = time.AfterFunc(500*time.Millisecond, progress.begin)
+	return progress
+}
+
+func (p *delayedProgress) begin() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.done {
+		return
+	}
+	p.started = true
+	if p.request != nil {
+		p.server.mu.Lock()
+		cancel := p.server.requestCancels[string(p.request)]
+		if cancel != nil {
+			p.server.progressCancels[string(p.token)] = cancel
+		}
+		p.server.mu.Unlock()
+	}
+	if p.create {
+		_ = p.server.write(map[string]any{
+			"jsonrpc": "2.0", "id": p.server.nextRequestID.Add(1),
+			"method": "window/workDoneProgress/create",
+			"params": map[string]any{"token": p.token},
+		})
+	}
+	_ = p.server.write(map[string]any{
+		"jsonrpc": "2.0", "method": "$/progress",
+		"params": map[string]any{
+			"token": p.token,
+			"value": map[string]any{"kind": "begin", "title": p.title, "cancellable": true},
+		},
+	})
+}
+
+func (p *delayedProgress) finish() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.done = true
+	if p.timer != nil {
+		p.timer.Stop()
+	}
+	if !p.started {
+		return
+	}
+	p.server.mu.Lock()
+	delete(p.server.progressCancels, string(p.token))
+	p.server.mu.Unlock()
+	_ = p.server.write(map[string]any{
+		"jsonrpc": "2.0", "method": "$/progress",
+		"params": map[string]any{
+			"token": p.token,
+			"value": map[string]any{"kind": "end"},
+		},
+	})
 }
 
 func standaloneWorkspaceDiagnosticItems(uri coresource.URI, result *analysis.Result) []lspDiagnostic {

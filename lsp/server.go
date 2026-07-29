@@ -79,26 +79,29 @@ type publishQueue struct {
 }
 
 type server struct {
-	in              *bufio.Reader
-	out             io.Writer
-	documents       map[string]*document
-	names           sema.Resolver
-	snapshot        *query.Snapshot
-	shutdown        bool
-	mu              sync.Mutex
-	writeMu         sync.Mutex
-	workers         sync.WaitGroup
-	requests        sync.WaitGroup
-	rules           *lint.Registrar
-	managedRoots    []string
-	workspaces      map[string]*workspaceIndex
-	projectRevision int64
-	parseCache      *lintproject.ParseCache
-	tokenCache      *preprocess.TokenCache
-	publishes       map[string]*publishQueue
-	nextRequestID   atomic.Uint64
-	lint            func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
-	analysisTrace   func(string, int, analysis.TraceEvent)
+	in               *bufio.Reader
+	out              io.Writer
+	documents        map[string]*document
+	names            sema.Resolver
+	snapshot         *query.Snapshot
+	shutdown         bool
+	mu               sync.Mutex
+	writeMu          sync.Mutex
+	workers          sync.WaitGroup
+	requestWorkers   sync.WaitGroup
+	requestCancels   map[string]context.CancelFunc
+	progressCancels  map[string]context.CancelFunc
+	workDoneProgress bool
+	rules            *lint.Registrar
+	managedRoots     []string
+	workspaces       map[string]*workspaceIndex
+	projectRevision  int64
+	parseCache       *lintproject.ParseCache
+	tokenCache       *preprocess.TokenCache
+	publishes        map[string]*publishQueue
+	nextRequestID    atomic.Uint64
+	lint             func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
+	analysisTrace    func(string, int, analysis.TraceEvent)
 }
 
 const (
@@ -289,8 +292,10 @@ func RunWithOptions(in io.Reader, out io.Writer, opts RunOptions) error {
 		in: bufio.NewReader(in), out: out, documents: make(map[string]*document),
 		names: apiNameResolver{index: apiIndex}, snapshot: query.New(), rules: lintrules.Default(),
 		workspaces: make(map[string]*workspaceIndex), parseCache: lintproject.NewParseCache(),
-		tokenCache:    preprocess.NewTokenCache(),
-		analysisTrace: opts.AnalysisTrace,
+		tokenCache:      preprocess.NewTokenCache(),
+		analysisTrace:   opts.AnalysisTrace,
+		requestCancels:  make(map[string]context.CancelFunc),
+		progressCancels: make(map[string]context.CancelFunc),
 	}
 	for {
 		body, err := readFrame(s.in)
@@ -337,6 +342,11 @@ func (s *server) handle(request message) (bool, error) {
 	switch request.Method {
 	case "initialize":
 		var params struct {
+			Capabilities struct {
+				Window struct {
+					WorkDoneProgress bool `json:"workDoneProgress"`
+				} `json:"window"`
+			} `json:"capabilities"`
 			InitializationOptions struct {
 				IncludePaths []string `json:"includePaths"`
 				PawnKit      *struct {
@@ -360,6 +370,7 @@ func (s *server) handle(request message) (bool, error) {
 			return false, err
 		}
 		s.managedRoots = cleaned
+		s.workDoneProgress = params.Capabilities.Window.WorkDoneProgress
 		s.projectRevision++
 		return false, s.respond(request.ID, map[string]any{
 			"capabilities": map[string]any{
@@ -391,15 +402,21 @@ func (s *server) handle(request message) (bool, error) {
 		return false, nil
 	case "shutdown":
 		s.shutdown = true
-		s.requests.Wait()
+		s.requestWorkers.Wait()
 		s.cancelDocuments()
 		s.workers.Wait()
 		return false, s.respond(request.ID, nil)
 	case "exit":
-		s.requests.Wait()
+		s.requestWorkers.Wait()
 		s.cancelDocuments()
 		s.workers.Wait()
 		return true, nil
+	case "$/cancelRequest":
+		s.cancelRequest(request.Params)
+		return false, nil
+	case "window/workDoneProgress/cancel":
+		s.cancelProgress(request.Params)
+		return false, nil
 	case "textDocument/didOpen":
 		return false, s.didOpen(request.Params)
 	case "textDocument/didChange":
@@ -415,8 +432,8 @@ func (s *server) handle(request message) (bool, error) {
 	case "workspace/symbol":
 		return false, s.workspaceSymbols(request.ID, request.Params)
 	case "workspace/diagnostic":
-		s.handleAsync(request, func() error {
-			return s.workspaceDiagnostics(request.ID)
+		s.handleAsync(request, func(ctx context.Context) error {
+			return s.workspaceDiagnostics(ctx, request.ID, request.Params)
 		})
 		return false, nil
 	case "textDocument/codeAction":
@@ -434,8 +451,8 @@ func (s *server) handle(request message) (bool, error) {
 	case "textDocument/documentSymbol":
 		return false, s.documentSymbols(request.ID, request.Params)
 	case "textDocument/diagnostic":
-		s.handleAsync(request, func() error {
-			return s.documentDiagnostics(request.ID, request.Params)
+		s.handleAsync(request, func(ctx context.Context) error {
+			return s.documentDiagnostics(ctx, request.ID, request.Params)
 		})
 		return false, nil
 	case "textDocument/documentHighlight":
@@ -478,14 +495,62 @@ func (s *server) handle(request message) (bool, error) {
 	}
 }
 
-func (s *server) handleAsync(request message, handle func() error) {
-	s.requests.Go(func() {
-		if err := handle(); err != nil {
-			if responseErr := s.respondError(request.ID, -32602, err.Error()); responseErr != nil {
+func (s *server) handleAsync(request message, handle func(context.Context) error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	key := string(request.ID)
+	s.mu.Lock()
+	if s.requestCancels == nil {
+		s.requestCancels = make(map[string]context.CancelFunc)
+	}
+	s.requestCancels[key] = cancel
+	s.mu.Unlock()
+	s.requestWorkers.Go(func() {
+		defer cancel()
+		defer func() {
+			s.mu.Lock()
+			delete(s.requestCancels, key)
+			s.mu.Unlock()
+		}()
+		if err := handle(ctx); err != nil {
+			code := -32602
+			if errors.Is(err, context.Canceled) {
+				code = -32800
+			}
+			if responseErr := s.respondError(request.ID, code, err.Error()); responseErr != nil {
 				fmt.Fprintf(os.Stderr, "pawnlsp: %s: %v\n", request.Method, errors.Join(err, responseErr))
 			}
 		}
 	})
+}
+
+func (s *server) cancelRequest(raw json.RawMessage) {
+	var params struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(raw, &params) != nil {
+		return
+	}
+	s.mu.Lock()
+	cancel := s.requestCancels[string(params.ID)]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (s *server) cancelProgress(raw json.RawMessage) {
+	var params struct {
+		Token json.RawMessage `json:"token"`
+	}
+	if json.Unmarshal(raw, &params) != nil {
+		return
+	}
+	s.mu.Lock()
+	cancel := s.progressCancels[string(params.Token)]
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (s *server) didChangeConfiguration(raw json.RawMessage) error {

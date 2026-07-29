@@ -20,6 +20,7 @@ Check the installed version with `pawnlsp --version`.
 The server provides:
 
 - diagnostics for open documents and indexed project files
+- cancellable progress for slow diagnostic pulls
 - safe fixes, rule documentation, and local pawnlint suppressions
 - documented completion, hover, signature help, and semantic highlighting
 - document and workspace symbols, definitions, hover, references, rename, and call hierarchy

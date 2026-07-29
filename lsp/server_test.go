@@ -223,7 +223,7 @@ func TestServerReturnsUnchangedDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.documentDiagnostics(json.RawMessage("3"), params); err != nil {
+	if err := s.documentDiagnostics(context.Background(), json.RawMessage("3"), params); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), `"kind":"unchanged","resultId":"2:1:full"`) {
@@ -280,7 +280,50 @@ func TestFormattingRunsWhileWorkspaceDiagnosticsArePending(t *testing.T) {
 	}
 	close(diagnosticsReady)
 	close(ready)
-	s.requests.Wait()
+	s.requestWorkers.Wait()
+}
+
+func TestCancelWorkspaceDiagnostics(t *testing.T) {
+	var output bytes.Buffer
+	s := &server{
+		out: &output,
+		workspaces: map[string]*workspaceIndex{
+			"/project": {
+				root: "/project", ready: make(chan struct{}), diagnosticsReady: make(chan struct{}),
+			},
+		},
+	}
+	if _, err := s.handle(message{
+		ID: json.RawMessage("7"), Method: "workspace/diagnostic", Params: json.RawMessage(`{}`),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cancel, _ := json.Marshal(map[string]any{"id": 7})
+	if _, err := s.handle(message{Method: "$/cancelRequest", Params: cancel}); err != nil {
+		t.Fatal(err)
+	}
+	s.requestWorkers.Wait()
+	if !strings.Contains(output.String(), `"code":-32800`) {
+		t.Fatalf("cancellation response = %s", output.String())
+	}
+}
+
+func TestDelayedDiagnosticProgress(t *testing.T) {
+	var output bytes.Buffer
+	s := &server{out: &output, workDoneProgress: true}
+	progress := s.delayedProgress(nil, json.RawMessage("1"), "Analysing Pawn workspace")
+	time.Sleep(550 * time.Millisecond)
+	progress.finish()
+	got := output.String()
+	for _, fragment := range []string{
+		`"method":"window/workDoneProgress/create"`, `"method":"$/progress"`,
+		`"kind":"begin"`, `"cancellable":true`,
+		`"title":"Analysing Pawn workspace"`, `"kind":"end"`,
+	} {
+		if !strings.Contains(got, fragment) {
+			t.Fatalf("progress missing %s: %s", fragment, got)
+		}
+	}
 }
 
 func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
@@ -315,7 +358,7 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.documentDiagnostics(json.RawMessage("1"), params); err != nil {
+	if err := s.documentDiagnostics(context.Background(), json.RawMessage("1"), params); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), `"resultId":"0:1:analysis"`) {

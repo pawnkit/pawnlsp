@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.50 - 2026-07-29
+
+### Added
+
+- Show cancellable progress when diagnostics take longer than 500 ms.
+- Handle LSP request cancellation for document and workspace diagnostics.
+
 ## 0.33.49 - 2026-07-29
 
 ### Performance
