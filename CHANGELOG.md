@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.46 - 2026-07-29
+
+### Added
+
+- Label variadic arguments as `arg1`, `arg2`, and so on in inlay hints.
+
 ## 0.33.45 - 2026-07-29
 
 ### Fixed

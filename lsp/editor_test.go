@@ -195,6 +195,31 @@ func TestServerReturnsInlayHintForMatchingArgumentName(t *testing.T) {
 	}
 }
 
+func TestServerNumbersVariadicInlayHints(t *testing.T) {
+	uri := tempDocumentURI(t)
+	text := "native format(output[], len, const format[], {Float,_}:...);\nmain() { new output[32]; format(output, sizeof output, \"%d %d\", 1, 2); }\n"
+	var input bytes.Buffer
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": map[string]any{}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 1, "text": text},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "id": 2, "method": "textDocument/inlayHint", "params": map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"range":        map[string]any{"start": map[string]any{"line": 1, "character": 0}, "end": map[string]any{"line": 2, "character": 0}},
+	}})
+	frame(t, &input, map[string]any{"jsonrpc": "2.0", "method": "exit"})
+
+	var output bytes.Buffer
+	if err := Run(&input, &output); err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{`"label":"output:"`, `"label":"len:"`, `"label":"format:"`, `"label":"arg1:"`, `"label":"arg2:"`} {
+		if !strings.Contains(output.String(), label) {
+			t.Fatalf("variadic hint missing %s: %s", label, output.String())
+		}
+	}
+}
+
 func TestServerUsesForwardedMacroSignatureForInlayHints(t *testing.T) {
 	uri := tempDocumentURI(t)
 	text := "stock Dialog_Open(playerid, const function[], style, const caption[]) { return style; }\n#define PlayerDialog_Show(%0,%1, \\\n Dialog_Open(%0,#%1,\nmain() { PlayerDialog_Show(0, Menu, 2, \"Title\"); }\n"

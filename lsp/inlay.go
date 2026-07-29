@@ -2,6 +2,7 @@ package lsp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	parser "github.com/pawnkit/pawn-parser"
@@ -51,9 +52,9 @@ func (s *server) inlayHints(id, raw json.RawMessage) error {
 		}
 		arguments := call.Arguments()
 		argumentIndex := 0
-		for arguments.Next() && argumentIndex < len(signature.Parameters) {
+		for arguments.Next() {
 			argument := arguments.Node()
-			name := parameterName(signature.Parameters[argumentIndex])
+			name := inlayParameterName(signature.Parameters, argumentIndex)
 			argumentIndex++
 			if name == "" || argument.Kind() == parser.KindArgumentName {
 				continue
@@ -67,6 +68,20 @@ func (s *server) inlayHints(id, raw json.RawMessage) error {
 		}
 	})
 	return s.respond(id, hints)
+}
+
+func inlayParameterName(parameters []string, index int) string {
+	if index < 0 || len(parameters) == 0 {
+		return ""
+	}
+	last := len(parameters) - 1
+	if strings.HasSuffix(strings.TrimSpace(parameters[last]), "...") && index >= last {
+		return fmt.Sprintf("arg%d", index-last+1)
+	}
+	if index >= len(parameters) {
+		return ""
+	}
+	return parameterName(parameters[index])
 }
 
 func parameterName(parameter string) string {
