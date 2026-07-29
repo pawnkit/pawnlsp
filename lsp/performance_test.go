@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -106,6 +109,63 @@ func BenchmarkDocumentDiagnostics50K(b *testing.B) {
 	}
 }
 
+func TestIncrementalPerformanceBudget(t *testing.T) {
+	if os.Getenv("PAWNKIT_PERFORMANCE_BUDGET") != "1" {
+		t.Skip("set PAWNKIT_PERFORMANCE_BUDGET=1 to run performance budgets")
+	}
+	server, doc, text := performanceLSPServer(t, 50_000)
+	editOffset := strings.LastIndex(string(text), "return 0")
+	line := strings.Count(string(text[:editOffset]), "\n")
+	durations := make([]time.Duration, 0, 3)
+	var peakBytes uint64
+	var peakAllocations uint64
+
+	for iteration := range 3 {
+		version := iteration + 2
+		params, err := json.Marshal(map[string]any{
+			"textDocument": map[string]any{"uri": doc.URI, "version": version},
+			"contentChanges": []map[string]any{{
+				"range": map[string]any{
+					"start": map[string]any{"line": line, "character": 16},
+					"end":   map[string]any{"line": line, "character": 17},
+				},
+				"text": strconv.Itoa(iteration % 10),
+			}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		started := time.Now()
+		if err := server.didChange(params); err != nil {
+			t.Fatal(err)
+		}
+		current := server.fullReadyDocument(doc.URI)
+		durations = append(durations, time.Since(started))
+		runtime.ReadMemStats(&after)
+		if current == nil || current.Version != version || current.Analysis == nil {
+			t.Fatalf("version %d was not analyzed", version)
+		}
+		peakBytes = max(peakBytes, after.TotalAlloc-before.TotalAlloc)
+		peakAllocations = max(peakAllocations, after.Mallocs-before.Mallocs)
+	}
+
+	slices.Sort(durations)
+	median := durations[len(durations)/2]
+	t.Logf("50K incremental diagnostics: median %s, peak %d MB, peak %d allocations", median, peakBytes/(1024*1024), peakAllocations)
+	if median > 2*time.Second {
+		t.Errorf("median latency %s exceeds 2s regression budget", median)
+	}
+	if peakBytes > 768*1024*1024 {
+		t.Errorf("allocated %d MB exceeds 768 MB regression budget", peakBytes/(1024*1024))
+	}
+	if peakAllocations > 2_000_000 {
+		t.Errorf("%d allocations exceed 2,000,000 regression budget", peakAllocations)
+	}
+}
+
 func benchmarkIncrementalDidChange(b *testing.B, lines int, full bool) {
 	b.Helper()
 	server, doc, text := benchmarkLSPServer(b, lines)
@@ -143,6 +203,13 @@ func benchmarkIncrementalDidChange(b *testing.B, lines int, full bool) {
 
 func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 	b.Helper()
+	server, doc, text := performanceLSPServer(b, lines)
+	b.SetBytes(int64(len(text)))
+	return server, doc, text
+}
+
+func performanceLSPServer(tb testing.TB, lines int) (*server, *document, []byte) {
+	tb.Helper()
 	uri := coresource.FileURI("benchmark.pwn")
 	text := benchmarkGamemode(lines)
 	buffer := coresource.NewTextBuffer(text)
@@ -160,7 +227,7 @@ func benchmarkLSPServer(b *testing.B, lines int) (*server, *document, []byte) {
 		workspaces: make(map[string]*workspaceIndex),
 	}
 	if err := server.publish(context.Background(), doc, server.snapshot); err != nil {
-		b.Fatal(err)
+		tb.Fatal(err)
 	}
 	return server, doc, text
 }

@@ -58,6 +58,12 @@ The generated 50,000-line benchmark takes 508-542 ms and allocates about
 260 MB. It has little macro expansion, so most of that time remains in parsing,
 symbol construction, linting, and garbage collection.
 
+CI runs the same 50,000-line edit three times. Its regression ceilings are a
+two-second median, 768 MB allocated, and two million allocations. A local full
+diagnostic run used about 631 MB and 1.63 million allocations. These are
+guardrails for slower shared runners, not the interactive target. Tighten them
+after measured improvements settle across supported platforms.
+
 Owned analysis snapshots remove one full-file copy from each editor revision.
 This is visible in allocations but does not remove the parser and lint work
 that still dominates the benchmark.

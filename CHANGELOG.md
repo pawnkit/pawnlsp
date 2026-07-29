@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.53 - 2026-07-29
+
+### Added
+
+- Check incremental diagnostic latency, allocated bytes, and allocations in CI.
+
 ## 0.33.52 - 2026-07-29
 
 ### Performance
