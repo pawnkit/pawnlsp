@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.40 - 2026-07-29
+
+### Performance
+
+- Use pawnfmt's syntax-unit range formatter for editor ranges.
+
 ## 0.33.39 - 2026-07-28
 
 ### Fixed
