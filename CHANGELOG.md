@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.71 - 2026-07-30
+
+### Fixed
+
+- Limit shared function-fact collection to project entry graphs.
+
 ## 0.33.70 - 2026-07-30
 
 ### Performance
