@@ -221,6 +221,25 @@ func (r apiNameResolver) ResolveCallable(name string) (sema.Callable, bool) {
 	return sema.Callable{}, false
 }
 
+func (r apiNameResolver) ResolveCallEffects(name string) (sema.CallEffects, bool) {
+	if r.index == nil {
+		return sema.CallEffects{}, false
+	}
+	for _, entry := range r.index.ByName(name) {
+		if entry.Signature == nil || !r.available(entry) {
+			continue
+		}
+		effects := sema.CallEffects{Complete: true, IntrinsicImpure: true}
+		for index, parameter := range entry.Signature.Parameters {
+			if parameter.Reference || (len(parameter.ArrayDimensions) > 0 && !parameter.Const) {
+				effects.MutatedParameters = append(effects.MutatedParameters, index)
+			}
+		}
+		return effects, true
+	}
+	return sema.CallEffects{}, false
+}
+
 func (r apiNameResolver) available(entry pawnapi.Entry) bool {
 	if r.profile == "" {
 		return true
@@ -956,6 +975,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 		shared, analysisErr = snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{
 			URI: coresource.URI(doc.URI), Includes: doc.Includes, Names: doc.Names, RetainExpanded: true,
 			MaxOutputTokens:          analysisOutputTokenLimit,
+			CollectFunctionFacts:     true,
 			Revision:                 fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
 			TokenCache:               s.tokenCache,
 			ReuseCompatibleExpansion: true,

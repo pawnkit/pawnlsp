@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -1341,6 +1342,11 @@ func TestAPINameResolver(t *testing.T) {
 	callable, ok := resolver.ResolveCallable("SetPlayerPos")
 	if !ok || callable.MinArgs == 0 || callable.MaxArgs < callable.MinArgs {
 		t.Fatalf("SetPlayerPos signature = %+v, ok=%v", callable, ok)
+	}
+	effects, ok := resolver.ResolveCallEffects("GetPlayerName")
+	if !ok || !effects.Complete || !effects.IntrinsicImpure ||
+		!reflect.DeepEqual(effects.MutatedParameters, []int{1}) {
+		t.Fatalf("GetPlayerName effects = %+v, ok=%v", effects, ok)
 	}
 	resolver.profile = "nonexistent-profile"
 	if got := resolver.ResolveName("SetPlayerPos"); got != sema.NameUnknown {

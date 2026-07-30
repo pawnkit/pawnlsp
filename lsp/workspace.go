@@ -260,7 +260,7 @@ func analyzeWorkspaceEntry(
 	return analysis.AnalyzeContext(ctx, text, analysis.Options{
 		URI: coresource.FileURI(entry), Includes: workspaceOverlayResolver{base: includes, open: open}, Names: names, RetainExpanded: true,
 		Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache, Previous: previous,
-		ReuseCompatibleExpansion: true,
+		ReuseCompatibleExpansion: true, CollectFunctionFacts: true,
 	})
 }
 

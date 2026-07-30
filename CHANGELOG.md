@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.70 - 2026-07-30
+
+### Performance
+
+- Share function effects between analysis and editor linting.
+- Reduced SAFW warm-lint time and allocation by avoiding duplicate effect analysis.
+
 ## 0.33.69 - 2026-07-30
 
 ### Performance
