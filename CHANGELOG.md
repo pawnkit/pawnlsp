@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.68 - 2026-07-30
+
+### Performance
+
+- Reduced strict editor linting work for functions with parameters.
+
 ## 0.33.67 - 2026-07-29
 
 ### Performance
