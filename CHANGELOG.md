@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.69 - 2026-07-30
+
+### Performance
+
+- Reuse parsing and symbol resolution for edits that wrap an expression in parentheses.
+- Added a 50,000-line benchmark for token-moving edits.
+
 ## 0.33.68 - 2026-07-30
 
 ### Performance
