@@ -969,7 +969,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	var shared *analysis.Result
 	var analysisErr error
 	if workspacePathKey(doc.Path) == workspacePathKey(doc.Entry) {
-		shared, analysisErr = s.workspaceGraphContext(ctx, doc)
+		shared, analysisErr = s.workspaceGraphIfReady(doc)
 	}
 	if shared == nil && analysisErr == nil {
 		shared, analysisErr = snapshot.Analyze(ctx, coresource.URI(doc.URI), analysis.Options{

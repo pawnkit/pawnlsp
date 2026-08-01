@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.75 - 2026-08-01
+
+### Performance
+
+- Start document analysis without waiting for the workspace diagnostics graph.
+
 ## 0.33.74 - 2026-08-01
 
 ### Performance

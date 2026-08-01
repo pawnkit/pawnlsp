@@ -243,6 +243,27 @@ func TestDocumentDiagnosticResultIDTracksReadiness(t *testing.T) {
 	}
 }
 
+func TestWorkspaceGraphIfReadyDoesNotBlockDocumentAnalysis(t *testing.T) {
+	root := t.TempDir()
+	s := &server{
+		workspaces: map[string]*workspaceIndex{
+			root: {root: root, diagnosticsReady: make(chan struct{})},
+		},
+	}
+	doc := &document{Root: root}
+	started := time.Now()
+	graph, err := s.workspaceGraphIfReady(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph != nil {
+		t.Fatalf("graph = %p, want no pending graph", graph)
+	}
+	if elapsed := time.Since(started); elapsed > 50*time.Millisecond {
+		t.Fatalf("pending graph lookup took %s", elapsed)
+	}
+}
+
 func TestFormattingRunsWhileWorkspaceDiagnosticsArePending(t *testing.T) {
 	uri := coresource.FileURI("main.pwn").String()
 	diagnosticsReady := make(chan struct{})

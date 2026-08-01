@@ -320,6 +320,25 @@ func (s *server) workspaceGraphContext(ctx context.Context, doc *document) (*ana
 	}
 }
 
+func (s *server) workspaceGraphIfReady(doc *document) (*analysis.Result, error) {
+	if doc == nil || doc.Root == "" {
+		return nil, nil
+	}
+	s.mu.Lock()
+	index := s.workspaces[doc.Root]
+	s.mu.Unlock()
+	if index == nil {
+		return nil, nil
+	}
+	select {
+	case <-workspaceDiagnosticsReady(index):
+		return index.graph, index.diagnosticErr
+	default:
+		// Keep document analysis responsive while the workspace graph catches up.
+		return nil, nil
+	}
+}
+
 func workspaceDiagnosticsReady(index *workspaceIndex) <-chan struct{} {
 	if index.diagnosticsReady != nil {
 		return index.diagnosticsReady
