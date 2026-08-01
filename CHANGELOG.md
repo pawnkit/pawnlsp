@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.82 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.18, which skips constant evaluation for non-constant
+  operands.
+
 ## 0.33.81 - 2026-08-01
 
 ### Performance
