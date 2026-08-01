@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.81 - 2026-08-01
+
+### Performance
+
+- Pass known edits through workspace indexing so entry-file diagnostics use the
+  same incremental path as open-document diagnostics.
+
 ## 0.33.80 - 2026-08-01
 
 ### Performance

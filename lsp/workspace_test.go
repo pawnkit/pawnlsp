@@ -187,9 +187,16 @@ func TestWorkspaceEntryReusesPreviousAnalysis(t *testing.T) {
 		t.Fatal(err)
 	}
 	second := []byte("stock First(value) { return value + 3; }\nstock Second(value) { return value + 2; }\n")
-	current, err := analyzeWorkspaceEntry(
+	start := bytes.Index(first, []byte("1"))
+	if start < 0 {
+		t.Fatal("edit target not found")
+	}
+	current, err := analyzeWorkspaceEntryWithEdit(
 		context.Background(), root, entry, map[string][]byte{workspacePathKey(entry): second},
-		nil, nil, nil, previous,
+		nil, nil, nil, previous, &preprocess.CompatibleEdit{
+			Before: preprocess.ByteRange{Start: start, End: start + 1},
+			After:  preprocess.ByteRange{Start: start, End: start + 1},
+		},
 	)
 	if err != nil {
 		t.Fatal(err)

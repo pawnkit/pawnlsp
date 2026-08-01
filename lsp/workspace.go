@@ -46,7 +46,7 @@ type workspaceOccurrence struct {
 }
 
 func (s *server) startWorkspaceIndex(doc *document) {
-	s.startWorkspaceIndexAfter(doc, 0, nil)
+	s.startWorkspaceIndexAfter(doc, 0, nil, nil)
 }
 
 func (s *server) refreshWorkspaceIndex(doc *document) {
@@ -62,7 +62,7 @@ func (s *server) refreshWorkspaceIndex(doc *document) {
 	s.startWorkspaceIndex(doc)
 }
 
-func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, previous *analysis.Result) {
+func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, previous *analysis.Result, previousEdit *preprocess.CompatibleEdit) {
 	if doc == nil || doc.Root == "" {
 		return
 	}
@@ -113,8 +113,8 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, pr
 			}
 		}
 		if doc.Entry != "" {
-			graph, diagnosticErr := analyzeWorkspaceEntry(
-				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache, previous,
+			graph, diagnosticErr := analyzeWorkspaceEntryWithEdit(
+				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache, previous, previousEdit,
 			)
 			s.mu.Lock()
 			index.graph = graph
@@ -159,7 +159,7 @@ func (s *server) restartWorkspaceIndex(doc *document) {
 	}
 	delete(s.workspaces, doc.Root)
 	s.mu.Unlock()
-	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous)
+	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous, doc.PreviousEdit)
 }
 
 func reusableWorkspaceGraph(index *workspaceIndex) *analysis.Result {
@@ -249,6 +249,20 @@ func analyzeWorkspaceEntry(
 	tokenCache *preprocess.TokenCache,
 	previous *analysis.Result,
 ) (*analysis.Result, error) {
+	return analyzeWorkspaceEntryWithEdit(ctx, root, entry, open, includes, names, tokenCache, previous, nil)
+}
+
+func analyzeWorkspaceEntryWithEdit(
+	ctx context.Context,
+	root string,
+	entry string,
+	open map[string][]byte,
+	includes preprocess.IncludeResolver,
+	names sema.Resolver,
+	tokenCache *preprocess.TokenCache,
+	previous *analysis.Result,
+	previousEdit *preprocess.CompatibleEdit,
+) (*analysis.Result, error) {
 	text, ok := open[workspacePathKey(entry)]
 	var err error
 	if !ok {
@@ -260,7 +274,7 @@ func analyzeWorkspaceEntry(
 	return analysis.AnalyzeContext(ctx, text, analysis.Options{
 		URI: coresource.FileURI(entry), Includes: workspaceOverlayResolver{base: includes, open: open}, Names: names, RetainExpanded: true,
 		Revision: root, MaxOutputTokens: analysisOutputTokenLimit, TokenCache: tokenCache, Previous: previous,
-		ReuseCompatibleExpansion: true, CollectFunctionFacts: true,
+		PreviousEdit: previousEdit, ReuseCompatibleExpansion: true, CollectFunctionFacts: true,
 	})
 }
 
