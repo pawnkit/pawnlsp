@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.86 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.22 for lower-allocation define checks.
+
 ## 0.33.85 - 2026-08-01
 
 ### Performance
