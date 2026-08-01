@@ -102,6 +102,7 @@ type server struct {
 	publishes        map[string]*publishQueue
 	nextRequestID    atomic.Uint64
 	lint             func(context.Context, *document, *lintproject.ParseCache, *analysis.Result) ([]diagnostic.Diagnostic, error)
+	formatSourceFn   func([]byte, pawnfmt.Options) ([]byte, error)
 	analysisTrace    func(string, int, analysis.TraceEvent)
 }
 
@@ -1083,6 +1084,15 @@ func (s *server) document(uri string) *document {
 	return s.documents[uri]
 }
 
+func (s *server) isCurrentDocument(doc *document) bool {
+	if doc == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.documents[doc.URI] == doc
+}
+
 func (s *server) readyDocument(uri string) *document {
 	for {
 		doc := s.document(uri)
@@ -2032,11 +2042,18 @@ func (s *server) formatting(id, raw json.RawMessage) error {
 	if doc == nil {
 		return s.respond(id, []textEdit{})
 	}
-	formatted, err := pawnfmt.Format(doc.text(), pawnfmt.Options{
+	format := pawnfmt.Format
+	if s.formatSourceFn != nil {
+		format = s.formatSourceFn
+	}
+	formatted, err := format(doc.text(), pawnfmt.Options{
 		TabSize: params.Options.TabSize, UseTabs: !params.Options.InsertSpaces,
 	})
 	if err != nil {
 		return s.respondError(id, -32603, err.Error())
+	}
+	if !s.isCurrentDocument(doc) {
+		return s.respond(id, []textEdit{})
 	}
 	if bytes.Equal(formatted, doc.text()) {
 		return s.respond(id, []textEdit{})

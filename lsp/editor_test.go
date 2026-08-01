@@ -9,6 +9,7 @@ import (
 
 	analysis "github.com/pawnkit/pawn-analysis"
 	parser "github.com/pawnkit/pawn-parser"
+	"github.com/pawnkit/pawnfmt"
 )
 
 func TestServerReturnsEditorRanges(t *testing.T) {
@@ -117,6 +118,43 @@ func TestRangeFormattingDoesNotWaitForAnalysis(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("range formatting waited for analysis")
+	}
+}
+
+func TestFormattingDropsStaleDocumentEdits(t *testing.T) {
+	uri := "file:///main.pwn"
+	doc := &document{URI: uri, Text: []byte("main(){return 1;}\n")}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var output bytes.Buffer
+	s := &server{
+		out:       &output,
+		documents: map[string]*document{uri: doc},
+		formatSourceFn: func(source []byte, _ pawnfmt.Options) ([]byte, error) {
+			close(started)
+			<-release
+			return append([]byte(nil), source...), nil
+		},
+	}
+	params, err := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri},
+		"options":      map[string]any{"tabSize": 4, "insertSpaces": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- s.formatting(json.RawMessage("1"), params) }()
+	<-started
+	s.mu.Lock()
+	s.documents[uri] = &document{URI: uri, Text: []byte("main(){return 2;}\n")}
+	s.mu.Unlock()
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), `"result":[]`) {
+		t.Fatalf("stale formatting edit was returned: %s", output.String())
 	}
 }
 

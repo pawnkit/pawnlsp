@@ -77,6 +77,9 @@ func (s *server) formatSelectedRange(id json.RawMessage, doc *document, start, e
 	}
 	replacement := result.Source[result.FormattedRange.Start:formattedEnd]
 	original := doc.text()[result.FormattedRange.Start:result.FormattedRange.End]
+	if !s.isCurrentDocument(doc) {
+		return s.respond(id, []textEdit{})
+	}
 	if string(replacement) == string(original) {
 		return s.respond(id, []textEdit{})
 	}

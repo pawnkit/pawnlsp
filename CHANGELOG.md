@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.88 - 2026-08-01
+
+### Formatting
+
+- Drop formatting edits prepared for a document version that has already
+  changed.
+
 ## 0.33.87 - 2026-08-01
 
 ### Diagnostics
