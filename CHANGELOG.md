@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.78 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.15, which reuses its built-in rule registry for editor
+  diagnostics.
+
 ## 0.33.77 - 2026-08-01
 
 ### Performance
