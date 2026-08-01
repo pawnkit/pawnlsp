@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.91 - 2026-08-01
+
+### Compatibility
+
+- Use pawn-analysis 0.30.8, pawnlint 1.8.24, and pawn-parser 1.5.7.
+
 ## 0.33.90 - 2026-08-01
 
 ### Compatibility
