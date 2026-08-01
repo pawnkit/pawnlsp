@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.33.74 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.12, which skips control-flow evaluation for proven
+  non-zero integer division operands.
+
 ## 0.33.73 - 2026-08-01
 
 ### Performance
