@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.90 - 2026-08-01
+
+### Compatibility
+
+- Use pawn-analysis 0.30.7 and pawnlint 1.8.23 for PawnPlus tag aliases.
+
 ## 0.33.89 - 2026-08-01
 
 ### Workspace features
