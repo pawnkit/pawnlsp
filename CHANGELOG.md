@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.72 - 2026-08-01
+
+### Fixed
+
+- Classify inactive preprocessor branches separately from source comments.
+
 ## 0.33.71 - 2026-07-30
 
 ### Fixed

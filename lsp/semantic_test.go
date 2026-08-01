@@ -18,10 +18,10 @@ func TestInactiveBranchUsesInactiveSemanticTokens(t *testing.T) {
 
 	var hiddenInactive, visibleInactive bool
 	for _, item := range collectSemanticTokens(doc, nil) {
-		if item.start == hidden && item.tokenType == semanticComment {
+		if item.start == hidden && item.tokenType == semanticInactive {
 			hiddenInactive = true
 		}
-		if item.start == visible && item.tokenType == semanticComment {
+		if item.start == visible && item.tokenType == semanticInactive {
 			visibleInactive = true
 		}
 	}
@@ -47,10 +47,10 @@ func TestInactiveBranchUsesEntryIncludeState(t *testing.T) {
 
 	var hiddenInactive, visibleInactive bool
 	for _, item := range collectSemanticTokens(doc, graph) {
-		if item.start == hidden && item.tokenType == semanticComment {
+		if item.start == hidden && item.tokenType == semanticInactive {
 			hiddenInactive = true
 		}
-		if item.start == visible && item.tokenType == semanticComment {
+		if item.start == visible && item.tokenType == semanticInactive {
 			visibleInactive = true
 		}
 	}

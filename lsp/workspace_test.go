@@ -363,7 +363,7 @@ func TestRealProjectProtocolResults(t *testing.T) {
 		line := 0
 		for index := 0; index+4 < len(response.Result.Data); index += 5 {
 			line += response.Result.Data[index]
-			if line >= 429 && line <= 445 && response.Result.Data[index+3] == semanticComment {
+			if line >= 429 && line <= 445 && response.Result.Data[index+3] == semanticInactive {
 				foundInactive = true
 				break
 			}
