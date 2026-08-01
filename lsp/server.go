@@ -1887,15 +1887,25 @@ func dedupeDiagnostics(items []lspDiagnostic) []lspDiagnostic {
 	if len(items) == 0 {
 		return []lspDiagnostic{}
 	}
-	seen := make(map[string]bool, len(items))
+	type key struct {
+		severity             int
+		startLine, startChar int
+		endLine, endChar     int
+		message              string
+	}
+	seen := make(map[key]struct{}, len(items))
 	out := items[:0]
 	for _, item := range items {
-		key := fmt.Sprintf("%s\x00%s\x00%d:%d-%d:%d", item.Code, item.Message,
-			item.Range.Start.Line, item.Range.Start.Character, item.Range.End.Line, item.Range.End.Character)
-		if seen[key] {
+		itemKey := key{
+			severity:  item.Severity,
+			startLine: item.Range.Start.Line, startChar: item.Range.Start.Character,
+			endLine: item.Range.End.Line, endChar: item.Range.End.Character,
+			message: item.Message,
+		}
+		if _, ok := seen[itemKey]; ok {
 			continue
 		}
-		seen[key] = true
+		seen[itemKey] = struct{}{}
 		out = append(out, item)
 	}
 	return out

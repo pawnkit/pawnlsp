@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.87 - 2026-08-01
+
+### Diagnostics
+
+- Avoid showing the same finding twice when analysis and lint report it.
+
 ## 0.33.86 - 2026-08-01
 
 ### Performance
