@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.77 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.14, which reuses rule IDs and token indexes per lint pass.
+
 ## 0.33.76 - 2026-08-01
 
 ### Performance
