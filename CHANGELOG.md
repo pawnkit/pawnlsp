@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.83 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.19 to reuse the open document's parsed syntax tree.
+
 ## 0.33.82 - 2026-08-01
 
 ### Performance
