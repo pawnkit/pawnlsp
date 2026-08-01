@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.79 - 2026-08-01
+
+### Performance
+
+- Use pawn-analysis 0.30.4 and pawnlint 1.8.16 for faster local edits.
+
 ## 0.33.78 - 2026-08-01
 
 ### Performance
