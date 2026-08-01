@@ -58,6 +58,7 @@ type document struct {
 	Names         sema.Resolver
 	Analysis      *analysis.Result
 	Revision      int64
+	PreviousEdit  *preprocess.CompatibleEdit
 	ready         chan struct{}
 	analysisReady chan struct{}
 	analysisOnce  sync.Once
@@ -732,6 +733,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 	if index.TextBuffer() == nil {
 		index = coresource.NewBufferedLineIndex(coresource.NewTextBuffer(doc.text()))
 	}
+	var previousEdit *preprocess.CompatibleEdit
 	for _, change := range params.ContentChanges {
 		if change.Range == nil {
 			buffer := coresource.NewTextBuffer([]byte(change.Text))
@@ -753,6 +755,12 @@ func (s *server) didChange(raw json.RawMessage) error {
 		if end < start {
 			return errors.New("invalid change range: end precedes start")
 		}
+		if len(params.ContentChanges) == 1 {
+			previousEdit = &preprocess.CompatibleEdit{
+				Before: preprocess.ByteRange{Start: int(start), End: int(end)},
+				After:  preprocess.ByteRange{Start: int(start), End: int(start) + len(change.Text)},
+			}
+		}
 		nextIndex, err := index.Apply(start, end, change.Text)
 		if err != nil {
 			return fmt.Errorf("apply change: %w", err)
@@ -763,7 +771,8 @@ func (s *server) didChange(raw json.RawMessage) error {
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Entry: doc.Entry, Buffer: index.TextBuffer(), Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
 		ready: make(chan struct{}), analysisReady: make(chan struct{}),
-		Revision: doc.Revision,
+		Revision:     doc.Revision,
+		PreviousEdit: previousEdit,
 	}
 	var accepted bool
 	s.snapshot, accepted = s.snapshot.UpdateOwned(query.Document{
@@ -978,6 +987,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 			Revision:                 fmt.Sprintf("%s:%T:%T:%d", doc.Path, doc.Includes, doc.Names, doc.Revision),
 			TokenCache:               s.tokenCache,
 			ReuseCompatibleExpansion: true,
+			PreviousEdit:             doc.PreviousEdit,
 			Trace:                    trace,
 		})
 	}

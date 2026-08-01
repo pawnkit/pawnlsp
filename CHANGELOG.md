@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.80 - 2026-08-01
+
+### Performance
+
+- Pass editor byte edits to pawn-analysis and avoid a redundant full-file scan.
+
 ## 0.33.79 - 2026-08-01
 
 ### Performance
