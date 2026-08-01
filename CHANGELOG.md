@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.85 - 2026-08-01
+
+### Performance
+
+- Use the indexed callable lookup in pawn-analysis and pawnlint.
+
 ## 0.33.84 - 2026-08-01
 
 ### Performance
