@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.84 - 2026-08-01
+
+### Performance
+
+- Use pawnlint 1.8.20 to avoid preparing the open document twice.
+
 ## 0.33.83 - 2026-08-01
 
 ### Performance
