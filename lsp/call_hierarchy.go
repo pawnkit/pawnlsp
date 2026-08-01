@@ -169,9 +169,19 @@ func (s *server) workspaceResults() map[coresource.URI]*analysis.Result {
 		documents = append(documents, doc)
 	}
 	s.mu.Unlock()
+	return s.workspaceResultsFrom(indexes, documents)
+}
+
+func (s *server) workspaceResultsFrom(indexes []*workspaceIndex, documents []*document) map[coresource.URI]*analysis.Result {
 	results := make(map[coresource.URI]*analysis.Result)
 	for _, index := range indexes {
 		<-index.ready
+		s.mu.Lock()
+		current := s.workspaces[index.root] == index
+		s.mu.Unlock()
+		if !current {
+			continue
+		}
 		maps.Copy(results, index.files)
 		if index.graph != nil && index.graph.Registry != nil {
 			if uri, ok := index.graph.Registry.URI(index.graph.File); ok {

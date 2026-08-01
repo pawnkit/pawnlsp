@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.89 - 2026-08-01
+
+### Workspace features
+
+- Ignore workspace results from an index replaced during a refresh.
+
 ## 0.33.88 - 2026-08-01
 
 ### Formatting

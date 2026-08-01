@@ -49,3 +49,28 @@ func TestCallableDeclarationsPreferImplementation(t *testing.T) {
 		t.Fatalf("declarations = %+v", items)
 	}
 }
+
+func TestWorkspaceResultsIgnoreReplacedIndex(t *testing.T) {
+	t.Parallel()
+
+	uri := coresource.FileURI("main.pwn")
+	result := analysis.Analyze([]byte("stock Current() {}\n"), analysis.Options{URI: uri})
+	old := &workspaceIndex{root: "/project", ready: closedWorkspaceChannel(), graph: result}
+	current := &workspaceIndex{root: "/project", ready: closedWorkspaceChannel()}
+	s := &server{
+		workspaces: map[string]*workspaceIndex{"/project": current},
+		documents:  map[string]*document{},
+	}
+
+	// The snapshot intentionally contains an index that has since been replaced.
+	results := s.workspaceResultsFrom([]*workspaceIndex{old}, nil)
+	if _, ok := results[uri]; ok {
+		t.Fatal("replaced workspace index was included")
+	}
+}
+
+func closedWorkspaceChannel() chan struct{} {
+	ready := make(chan struct{})
+	close(ready)
+	return ready
+}
