@@ -2,6 +2,16 @@
 
 Notable changes are recorded here.
 
+## 0.33.73 - 2026-08-01
+
+### Performance
+
+- Reuse trivia-only analysis through pawn-analysis 0.30.3.
+
+### Changed
+
+- Use pawnfmt 1.4.4 and pawnlint 1.8.11.
+
 ## 0.33.72 - 2026-08-01
 
 ### Fixed
