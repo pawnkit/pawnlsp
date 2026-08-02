@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.5 - 2026-08-02
+
+### Performance
+
+- Use pawnlint 1.8.31 and its indexed shared function effects.
+
 ## 0.34.4 - 2026-08-02
 
 ### Compatibility
