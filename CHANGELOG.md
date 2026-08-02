@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.1 - 2026-08-02
+
+### Compatibility
+
+- Use pawn-api 0.19.3 and pawnlint 1.8.28.
+
 ## 0.34.0 - 2026-08-02
 
 ### Compatibility
