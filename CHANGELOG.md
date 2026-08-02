@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.3 - 2026-08-02
+
+### Performance
+
+- Use pawn-analysis 0.30.11 and reuse compatible function-effect facts.
+
 ## 0.34.2 - 2026-08-02
 
 ### Compatibility
