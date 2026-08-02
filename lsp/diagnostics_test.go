@@ -3,6 +3,11 @@ package lsp
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/pawnkit/pawn-analysis/preprocess"
+	lintdiagnostic "github.com/pawnkit/pawnlint/pkg/diagnostic"
+	"github.com/pawnkit/pawnlint/pkg/lint"
+	"github.com/pawnkit/pawnlint/pkg/rules"
 )
 
 func TestEmptyDiagnosticsEncodeAsArray(t *testing.T) {
@@ -12,6 +17,47 @@ func TestEmptyDiagnosticsEncodeAsArray(t *testing.T) {
 	}
 	if string(body) != `{"items":[]}` {
 		t.Fatalf("response = %s", body)
+	}
+}
+
+func TestPreserveDiagnosticsShiftsOnlyUnaffectedFindings(t *testing.T) {
+	items := lint.NewEngine(rules.Default()).LintFile(
+		"test.pwn", []byte("main() { new a; a = a; new b; b = b; }\n"), lint.ProjectAnalysis,
+		map[string]lintdiagnostic.Severity{"self-assignment": lintdiagnostic.SeverityWarning}, nil, nil,
+	)
+	if len(items) != 2 {
+		t.Fatalf("lint findings = %#v, want two findings", items)
+	}
+	first, second := items[0], items[1]
+	if first.RuleID != "self-assignment" || second.RuleID != "self-assignment" {
+		t.Fatalf("lint findings = %#v", items)
+	}
+	insertAt := second.Range.Start.Offset - 1
+	got := preserveDiagnostics(items, &preprocess.CompatibleEdit{
+		Before: preprocess.ByteRange{Start: insertAt, End: insertAt},
+		After:  preprocess.ByteRange{Start: insertAt, End: insertAt + 2},
+	})
+	if len(got) != 2 {
+		t.Fatalf("preserved = %#v, want two findings", got)
+	}
+	if got[0].Range.Start.Offset != first.Range.Start.Offset || got[0].Range.End.Offset != first.Range.End.Offset {
+		t.Fatalf("before finding = %#v", got[0])
+	}
+	if got[1].Range.Start.Offset != second.Range.Start.Offset+2 || got[1].Range.End.Offset != second.Range.End.Offset+2 {
+		t.Fatalf("after finding = %#v", got[1])
+	}
+	if got := preserveDiagnostics(items, &preprocess.CompatibleEdit{
+		Before: preprocess.ByteRange{Start: second.Range.Start.Offset, End: second.Range.End.Offset},
+		After:  preprocess.ByteRange{Start: second.Range.Start.Offset, End: second.Range.Start.Offset},
+	}); len(got) != 1 {
+		t.Fatalf("overlapping findings = %#v, want one finding", got)
+	}
+}
+
+func TestPreserveDiagnosticsRejectsWholeDocumentChanges(t *testing.T) {
+	items := []lintdiagnostic.Diagnostic{{RuleID: "old"}}
+	if got := preserveDiagnostics(items, nil); got != nil {
+		t.Fatalf("preserved = %#v, want nil", got)
 	}
 }
 

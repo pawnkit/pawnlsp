@@ -11,6 +11,7 @@ import (
 	"time"
 
 	analysis "github.com/pawnkit/pawn-analysis"
+	"github.com/pawnkit/pawn-analysis/preprocess"
 	"github.com/pawnkit/pawnkit-core/diagnostic"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 	lintdiagnostic "github.com/pawnkit/pawnlint/pkg/diagnostic"
@@ -351,13 +352,14 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph 
 		return []lspDiagnostic{}
 	}
 	index := doc.lineIndex()
-	capacity := 0
-	if includeLint {
-		capacity = len(doc.Diagnostics)
+	findings := doc.Diagnostics
+	if !includeLint {
+		findings = doc.StaleDiagnostics
 	}
+	capacity := len(findings)
 	items := make([]lspDiagnostic, 0, capacity)
-	if includeLint {
-		for _, finding := range doc.Diagnostics {
+	if len(findings) != 0 {
+		for _, finding := range findings {
 			if graph != nil && strings.HasPrefix(finding.RuleID, "pawn-analysis:") {
 				continue
 			}
@@ -386,6 +388,37 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph 
 		items = append(items, removeMirroredAnalysisDiagnostics(analysisItems, items)...)
 	}
 	return dedupeDiagnostics(items)
+}
+
+func preserveDiagnostics(items []lintdiagnostic.Diagnostic, edit *preprocess.CompatibleEdit) []lintdiagnostic.Diagnostic {
+	if len(items) == 0 || edit == nil {
+		return nil
+	}
+	removed := edit.Before.End - edit.Before.Start
+	inserted := edit.After.End - edit.After.Start
+	delta := inserted - removed
+	preserved := make([]lintdiagnostic.Diagnostic, 0, len(items))
+	for _, item := range items {
+		start, end := item.Range.Start.Offset, item.Range.End.Offset
+		switch {
+		case end <= edit.Before.Start:
+		case start >= edit.Before.End:
+			start += delta
+			end += delta
+		default:
+			continue
+		}
+		if start < 0 || end < start {
+			continue
+		}
+		item.Range.Start.Offset = start
+		item.Range.End.Offset = end
+		item.Notes = nil
+		item.Suggestions = nil
+		item.Fix = nil
+		preserved = append(preserved, item)
+	}
+	return preserved
 }
 
 func removeMirroredAnalysisDiagnostics(analysisItems, lintItems []lspDiagnostic) []lspDiagnostic {

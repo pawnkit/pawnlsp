@@ -44,26 +44,27 @@ type message struct {
 }
 
 type document struct {
-	URI           string
-	Path          string
-	Root          string
-	Entry         string
-	Text          []byte
-	Buffer        *coresource.TextBuffer
-	Index         *coresource.LineIndex
-	Version       int
-	Diagnostics   []diagnostic.Diagnostic
-	Includes      preprocess.IncludeResolver
-	Candidates    includeCandidateProvider
-	Names         sema.Resolver
-	Analysis      *analysis.Result
-	Revision      int64
-	PreviousEdit  *preprocess.CompatibleEdit
-	ready         chan struct{}
-	analysisReady chan struct{}
-	analysisOnce  sync.Once
-	fullOnce      sync.Once
-	cancel        context.CancelFunc
+	URI              string
+	Path             string
+	Root             string
+	Entry            string
+	Text             []byte
+	Buffer           *coresource.TextBuffer
+	Index            *coresource.LineIndex
+	Version          int
+	Diagnostics      []diagnostic.Diagnostic
+	StaleDiagnostics []diagnostic.Diagnostic
+	Includes         preprocess.IncludeResolver
+	Candidates       includeCandidateProvider
+	Names            sema.Resolver
+	Analysis         *analysis.Result
+	Revision         int64
+	PreviousEdit     *preprocess.CompatibleEdit
+	ready            chan struct{}
+	analysisReady    chan struct{}
+	analysisOnce     sync.Once
+	fullOnce         sync.Once
+	cancel           context.CancelFunc
 }
 
 type publishRequest struct {
@@ -771,7 +772,8 @@ func (s *server) didChange(raw json.RawMessage) error {
 	next := &document{
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Entry: doc.Entry, Buffer: index.TextBuffer(), Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
-		ready: make(chan struct{}), analysisReady: make(chan struct{}),
+		StaleDiagnostics: preserveDiagnostics(doc.Diagnostics, previousEdit),
+		ready:            make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision:     doc.Revision,
 		PreviousEdit: previousEdit,
 	}
@@ -1013,6 +1015,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
+	doc.StaleDiagnostics = nil
 	if ctx.Err() != nil || s.document(doc.URI) != doc {
 		return ctx.Err()
 	}
