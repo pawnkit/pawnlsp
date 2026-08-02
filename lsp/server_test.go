@@ -156,6 +156,80 @@ func TestDidChangeKeepsWorkspaceIndex(t *testing.T) {
 	}
 }
 
+func TestDidChangeReindexesIncludedFile(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	include := filepath.Join(root, "include.inc")
+	uri := coresource.FileURI(include).String()
+	text := []byte("stock Included() { return 1; }\n")
+	entryURI := coresource.FileURI(entry).String()
+	index := &workspaceIndex{
+		root: root, entry: entry, ready: closedChannel(),
+		graph: &analysis.Result{Preprocess: &preprocess.Result{
+			Files: []preprocess.FileInfo{{URI: entryURI}, {URI: uri}},
+		}},
+	}
+	doc := &document{URI: uri, Path: include, Root: root, Entry: entry, Text: text, Version: 1}
+	s := &server{
+		documents:  map[string]*document{uri: doc},
+		snapshot:   query.New(query.Document{URI: coresource.URI(uri), Text: text, Version: 1}),
+		workspaces: map[string]*workspaceIndex{root: index},
+	}
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 25},
+			"end":   map[string]any{"line": 0, "character": 26},
+		}, "text": "2"}},
+	})
+	if err := s.didChange(params); err != nil {
+		t.Fatal(err)
+	}
+	if s.workspaces[root] == index {
+		t.Fatal("included-file edit kept the workspace index")
+	}
+	if current := s.document(uri); current != nil && current.cancel != nil {
+		current.cancel()
+	}
+}
+
+func TestDidChangeKeepsWorkspaceIndexForUnrelatedFile(t *testing.T) {
+	root := t.TempDir()
+	entry := filepath.Join(root, "main.pwn")
+	unrelated := filepath.Join(root, "unrelated.inc")
+	uri := coresource.FileURI(unrelated).String()
+	text := []byte("stock Unrelated() { return 1; }\n")
+	entryURI := coresource.FileURI(entry).String()
+	index := &workspaceIndex{
+		root: root, entry: entry, ready: closedChannel(),
+		graph: &analysis.Result{Preprocess: &preprocess.Result{
+			Files: []preprocess.FileInfo{{URI: entryURI}},
+		}},
+	}
+	doc := &document{URI: uri, Path: unrelated, Root: root, Entry: entry, Text: text, Version: 1}
+	s := &server{
+		documents:  map[string]*document{uri: doc},
+		snapshot:   query.New(query.Document{URI: coresource.URI(uri), Text: text, Version: 1}),
+		workspaces: map[string]*workspaceIndex{root: index},
+	}
+	params, _ := json.Marshal(map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 2},
+		"contentChanges": []map[string]any{{"range": map[string]any{
+			"start": map[string]any{"line": 0, "character": 25},
+			"end":   map[string]any{"line": 0, "character": 26},
+		}, "text": "2"}},
+	})
+	if err := s.didChange(params); err != nil {
+		t.Fatal(err)
+	}
+	if s.workspaces[root] != index {
+		t.Fatal("unrelated-file edit restarted the workspace index")
+	}
+	if current := s.document(uri); current != nil && current.cancel != nil {
+		current.cancel()
+	}
+}
+
 func TestServerReturnsDiagnosticsAndFixes(t *testing.T) {
 	uri := tempDocumentURI(t)
 	source := "main() { if (true); { return; } if (false); { return; } }\n"

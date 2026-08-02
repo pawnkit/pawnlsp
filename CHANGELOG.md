@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.7 - 2026-08-02
+
+### Performance
+
+- Keep the workspace index for edits to files outside the active include graph.
+
 ## 0.34.6 - 2026-08-02
 
 ### Performance

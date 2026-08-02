@@ -789,11 +789,30 @@ func (s *server) didChange(raw json.RawMessage) error {
 	s.mu.Lock()
 	s.documents[next.URI] = next
 	s.mu.Unlock()
-	if next.Entry != "" {
+	if s.workspaceEditRequiresReindex(next) {
 		s.restartWorkspaceIndex(next)
 	}
 	s.schedulePublishAfter(next, s.snapshot, documentPublishDebounce)
 	return nil
+}
+
+func (s *server) workspaceEditRequiresReindex(doc *document) bool {
+	if doc == nil || doc.Root == "" || doc.Entry == "" {
+		return false
+	}
+	s.mu.Lock()
+	index := s.workspaces[doc.Root]
+	s.mu.Unlock()
+	if index == nil {
+		return true
+	}
+	if workspacePathKey(doc.Path) == workspacePathKey(doc.Entry) {
+		return true
+	}
+	if index.graph == nil {
+		return true
+	}
+	return workspaceGraphContains(index, doc.Path)
 }
 
 func (s *server) didClose(raw json.RawMessage) error {
