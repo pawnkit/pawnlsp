@@ -83,7 +83,8 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, pr
 	open := make(map[string][]byte)
 	for _, current := range s.documents {
 		if current.Root == doc.Root {
-			open[workspacePathKey(current.Path)] = append([]byte(nil), current.text()...)
+			// TextBuffer snapshots are immutable; share their bytes with the index.
+			open[workspacePathKey(current.Path)] = current.text()
 		}
 	}
 	s.mu.Unlock()

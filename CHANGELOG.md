@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.94 - 2026-08-02
+
+### Performance
+
+- Share immutable open-document snapshots with the workspace index.
+
 ## 0.33.93 - 2026-08-02
 
 ### Performance
