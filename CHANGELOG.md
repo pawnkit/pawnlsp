@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.92 - 2026-08-02
+
+### Performance
+
+- Use pawnlint 1.8.25 for faster statement-macro checks.
+
 ## 0.33.91 - 2026-08-01
 
 ### Compatibility
