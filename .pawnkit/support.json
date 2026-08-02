@@ -11,6 +11,6 @@
   ],
   "limitations": [
     "The compatibility smoke checks installation on all platforms; protocol tests run on Linux.",
-    "Workspace latency budgets are not enforced yet."
+    "Workspace latency budgets are checked in CI on Linux; platform-specific latency may differ."
   ]
 }

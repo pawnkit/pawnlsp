@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.95 - 2026-08-02
+
+### Documentation
+
+- Record that workspace latency budgets run in Linux CI.
+
 ## 0.33.94 - 2026-08-02
 
 ### Performance
