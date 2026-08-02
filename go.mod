@@ -6,8 +6,8 @@ require (
 	github.com/pawnkit/pawn-analysis v0.30.9
 	github.com/pawnkit/pawn-api v0.19.0
 	github.com/pawnkit/pawn-parser v1.5.8
-	github.com/pawnkit/pawn-project v0.34.1
-	github.com/pawnkit/pawnfmt v1.4.6
+	github.com/pawnkit/pawn-project v0.34.2
+	github.com/pawnkit/pawnfmt v1.4.7
 	github.com/pawnkit/pawnkit-core v0.5.0
 	github.com/pawnkit/pawnlint v1.8.27
 )

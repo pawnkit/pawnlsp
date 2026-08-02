@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.0 - 2026-08-02
+
+### Compatibility
+
+- Use pawnfmt 1.4.7 and pawn-project 0.34.2.
+
 ## 0.33.99 - 2026-08-02
 
 ### Compatibility
