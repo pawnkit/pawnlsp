@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.8 - 2026-08-02
+
+### Performance
+
+- Run the 100K-line incremental budget in CI with the 50K budget.
+
 ## 0.34.7 - 2026-08-02
 
 ### Performance

@@ -75,7 +75,7 @@ jobs:
       - name: Check incremental latency and memory budgets
         env:
           PAWNKIT_PERFORMANCE_BUDGET: "1"
-        run: go test -count=1 -run '^TestIncrementalPerformanceBudget$' ./lsp
+        run: go test -count=1 -run '^TestIncremental(PerformanceBudget|AnalysisBudget100K)$' ./lsp
 
   security:
     runs-on: ubuntu-latest
