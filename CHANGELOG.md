@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.6 - 2026-08-02
+
+### Performance
+
+- Use pawnlint 1.8.32 and reuse its shared function-effect index across files.
+
 ## 0.34.5 - 2026-08-02
 
 ### Performance
