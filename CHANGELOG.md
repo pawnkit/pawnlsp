@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.9 - 2026-08-02
+
+### Changed
+
+- Use the current analysis, API, formatter, and linter releases.
+
 ## 0.34.8 - 2026-08-02
 
 ### Performance
