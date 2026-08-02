@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.4 - 2026-08-02
+
+### Compatibility
+
+- Use pawnlint 1.8.30 with the latest shared analysis cache.
+
 ## 0.34.3 - 2026-08-02
 
 ### Performance
