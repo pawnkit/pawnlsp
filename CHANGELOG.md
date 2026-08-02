@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.99 - 2026-08-02
+
+### Compatibility
+
+- Use pawnfmt 1.4.6 and pawnlint 1.8.27.
+
 ## 0.33.98 - 2026-08-02
 
 ### Compatibility
