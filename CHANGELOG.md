@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.98 - 2026-08-02
+
+### Compatibility
+
+- Use pawn-analysis 0.30.9 and pawn-parser 1.5.8.
+
 ## 0.33.97 - 2026-08-02
 
 ### Diagnostics
