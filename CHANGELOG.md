@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.97 - 2026-08-02
+
+### Diagnostics
+
+- Keep unaffected analysis findings visible while an edited document is rechecked.
+
 ## 0.33.96 - 2026-08-02
 
 ### Diagnostics

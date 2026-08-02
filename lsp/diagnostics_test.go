@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
+	analysis "github.com/pawnkit/pawn-analysis"
 	"github.com/pawnkit/pawn-analysis/preprocess"
+	"github.com/pawnkit/pawn-analysis/sema"
+	coresource "github.com/pawnkit/pawnkit-core/source"
 	lintdiagnostic "github.com/pawnkit/pawnlint/pkg/diagnostic"
 	"github.com/pawnkit/pawnlint/pkg/lint"
 	"github.com/pawnkit/pawnlint/pkg/rules"
@@ -58,6 +61,34 @@ func TestPreserveDiagnosticsRejectsWholeDocumentChanges(t *testing.T) {
 	items := []lintdiagnostic.Diagnostic{{RuleID: "old"}}
 	if got := preserveDiagnostics(items, nil); got != nil {
 		t.Fatalf("preserved = %#v, want nil", got)
+	}
+}
+
+func TestPreserveAnalysisShiftsRootFindings(t *testing.T) {
+	result := analysis.Analyze([]byte("main() { Missing(); }\n"), analysis.Options{
+		URI:   coresource.FileURI("test.pwn"),
+		Names: sema.MapResolver{},
+	})
+	var originalStart coresource.Offset
+	for _, item := range result.Diagnostics {
+		if item.Primary.File == result.File {
+			originalStart = item.Primary.Start
+			break
+		}
+	}
+	if originalStart == 0 {
+		t.Fatalf("analysis diagnostics = %#v, want a root-file finding", result.Diagnostics)
+	}
+
+	got := preserveAnalysis(result, &preprocess.CompatibleEdit{
+		Before: preprocess.ByteRange{Start: 0, End: 0},
+		After:  preprocess.ByteRange{Start: 0, End: 2},
+	})
+	if got == nil || len(got.Diagnostics) == 0 {
+		t.Fatalf("preserved analysis = %#v, want root finding", got)
+	}
+	if got.Diagnostics[0].Primary.Start != originalStart+2 {
+		t.Fatalf("preserved start = %d, want %d", got.Diagnostics[0].Primary.Start, originalStart+2)
 	}
 }
 

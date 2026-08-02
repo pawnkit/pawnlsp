@@ -384,7 +384,11 @@ func (s *server) documentDiagnosticItems(doc *document, includeLint bool, graph 
 		analysisItems := analysisGraphDiagnosticItems(graph)[coresource.URI(doc.URI)]
 		items = append(items, removeMirroredAnalysisDiagnostics(analysisItems, items)...)
 	} else {
-		analysisItems := analysisDiagnosticItemsWithIndex(doc.Analysis, doc.text(), index)
+		analysisResult := doc.Analysis
+		if analysisResult == nil {
+			analysisResult = doc.StaleAnalysis
+		}
+		analysisItems := analysisDiagnosticItemsWithIndex(analysisResult, doc.text(), index)
 		items = append(items, removeMirroredAnalysisDiagnostics(analysisItems, items)...)
 	}
 	return dedupeDiagnostics(items)
@@ -400,25 +404,61 @@ func preserveDiagnostics(items []lintdiagnostic.Diagnostic, edit *preprocess.Com
 	preserved := make([]lintdiagnostic.Diagnostic, 0, len(items))
 	for _, item := range items {
 		start, end := item.Range.Start.Offset, item.Range.End.Offset
-		switch {
-		case end <= edit.Before.Start:
-		case start >= edit.Before.End:
-			start += delta
-			end += delta
-		default:
+		mappedStart, mappedEnd, ok := preserveRange(start, end, edit, delta)
+		if !ok {
 			continue
 		}
-		if start < 0 || end < start {
-			continue
-		}
-		item.Range.Start.Offset = start
-		item.Range.End.Offset = end
+		item.Range.Start.Offset = mappedStart
+		item.Range.End.Offset = mappedEnd
 		item.Notes = nil
 		item.Suggestions = nil
 		item.Fix = nil
 		preserved = append(preserved, item)
 	}
 	return preserved
+}
+
+func preserveAnalysis(result *analysis.Result, edit *preprocess.CompatibleEdit) *analysis.Result {
+	if result == nil || edit == nil {
+		return nil
+	}
+	copyResult := *result
+	copyResult.Diagnostics = nil
+	delta := edit.After.End - edit.After.Start - (edit.Before.End - edit.Before.Start)
+	for _, item := range result.Diagnostics {
+		if item.Primary.File != result.File {
+			continue
+		}
+		start, end, ok := preserveRange(int(item.Primary.Start), int(item.Primary.End), edit, delta)
+		if !ok {
+			continue
+		}
+		item.Primary.Start = coresource.Offset(start)
+		item.Primary.End = coresource.Offset(end)
+		item.Related = nil
+		item.SafeFixes = nil
+		item.ReviewFixes = nil
+		copyResult.Diagnostics = append(copyResult.Diagnostics, item)
+	}
+	if len(copyResult.Diagnostics) == 0 {
+		return nil
+	}
+	return &copyResult
+}
+
+func preserveRange(start, end int, edit *preprocess.CompatibleEdit, delta int) (int, int, bool) {
+	switch {
+	case end <= edit.Before.Start:
+	case start >= edit.Before.End:
+		start += delta
+		end += delta
+	default:
+		return 0, 0, false
+	}
+	if start < 0 || end < start {
+		return 0, 0, false
+	}
+	return start, end, true
 }
 
 func removeMirroredAnalysisDiagnostics(analysisItems, lintItems []lspDiagnostic) []lspDiagnostic {

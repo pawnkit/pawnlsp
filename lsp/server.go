@@ -54,6 +54,7 @@ type document struct {
 	Version          int
 	Diagnostics      []diagnostic.Diagnostic
 	StaleDiagnostics []diagnostic.Diagnostic
+	StaleAnalysis    *analysis.Result
 	Includes         preprocess.IncludeResolver
 	Candidates       includeCandidateProvider
 	Names            sema.Resolver
@@ -773,6 +774,7 @@ func (s *server) didChange(raw json.RawMessage) error {
 		URI: doc.URI, Path: doc.Path, Root: doc.Root, Entry: doc.Entry, Buffer: index.TextBuffer(), Index: index,
 		Version: params.TextDocument.Version, Includes: doc.Includes, Candidates: doc.Candidates, Names: doc.Names,
 		StaleDiagnostics: preserveDiagnostics(doc.Diagnostics, previousEdit),
+		StaleAnalysis:    preserveAnalysis(doc.Analysis, previousEdit),
 		ready:            make(chan struct{}), analysisReady: make(chan struct{}),
 		Revision:     doc.Revision,
 		PreviousEdit: previousEdit,
@@ -1016,6 +1018,7 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	diagnostics = reconcileDiagnostics(diagnostics, shared)
 	doc.Diagnostics = diagnostics
 	doc.StaleDiagnostics = nil
+	doc.StaleAnalysis = nil
 	if ctx.Err() != nil || s.document(doc.URI) != doc {
 		return ctx.Err()
 	}
