@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.33.93 - 2026-08-02
+
+### Performance
+
+- Use pawnlint 1.8.26 for faster recursive-call checks.
+
 ## 0.33.92 - 2026-08-02
 
 ### Performance
