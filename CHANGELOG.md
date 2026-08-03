@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.15 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.37 for lower-overhead lint runs.
+
 ## 0.34.14 - 2026-08-03
 
 ### Performance
