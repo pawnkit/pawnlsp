@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.30 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.47's faster initialization checks.
+
 ## 0.34.29 - 2026-08-03
 
 ### Performance
