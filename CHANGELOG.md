@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.20 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.20 to avoid copying immutable workspace signatures.
+
 ## 0.34.19 - 2026-08-03
 
 ### Performance
