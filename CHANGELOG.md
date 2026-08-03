@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.39 - 2026-08-03
+
+### CI
+
+- Use PawnKit Actions v1.8.73 for support checks.
+
 ## 0.34.38 - 2026-08-03
 
 ### CI
