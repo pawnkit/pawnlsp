@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.34.10 - 2026-08-03
+
+### Changed
+
+- Use the retained-token analysis path from pawn-analysis v0.30.13.
+- Use pawnlint v1.8.35 and pawn-parser v1.5.10.
+
 ## 0.34.9 - 2026-08-02
 
 ### Changed
