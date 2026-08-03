@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.27 - 2026-08-03
+
+### Performance
+
+- Use pawnlint's cached loop uncertainty index during strict editor linting.
+
 ## 0.34.26 - 2026-08-03
 
 ### Performance
