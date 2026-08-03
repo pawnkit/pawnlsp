@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -31,6 +32,8 @@ type workspaceIndex struct {
 	ready            chan struct{}
 	diagnosticsReady chan struct{}
 	files            map[coresource.URI]*analysis.Result
+	snapshot         *query.Snapshot
+	paths            map[string]struct{}
 	graph            *analysis.Result
 	previous         *analysis.Result
 	diagnosticErr    error
@@ -46,7 +49,7 @@ type workspaceOccurrence struct {
 }
 
 func (s *server) startWorkspaceIndex(doc *document) {
-	s.startWorkspaceIndexAfter(doc, 0, nil, nil)
+	s.startWorkspaceIndexAfter(doc, 0, nil, nil, nil, nil)
 }
 
 func (s *server) refreshWorkspaceIndex(doc *document) {
@@ -62,7 +65,14 @@ func (s *server) refreshWorkspaceIndex(doc *document) {
 	s.startWorkspaceIndex(doc)
 }
 
-func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, previous *analysis.Result, previousEdit *preprocess.CompatibleEdit) {
+func (s *server) startWorkspaceIndexAfter(
+	doc *document,
+	delay time.Duration,
+	previous *analysis.Result,
+	previousEdit *preprocess.CompatibleEdit,
+	previousSnapshot *query.Snapshot,
+	previousPaths map[string]struct{},
+) {
 	if doc == nil || doc.Root == "" {
 		return
 	}
@@ -132,13 +142,15 @@ func (s *server) startWorkspaceIndexAfter(doc *document, delay time.Duration, pr
 			if current {
 				s.requestDiagnosticRefresh()
 			}
-			index.files, index.err = analyzeWorkspaceFiles(
+			index.files, index.snapshot, index.paths, index.err = analyzeWorkspaceFilesWithSnapshot(
 				ctx, doc.Root, doc.Entry, open, doc.Includes, doc.Names, s.tokenCache,
+				previousSnapshot, previousPaths,
 			)
 			return
 		}
-		index.files, index.err = analyzeWorkspaceFiles(
+		index.files, index.snapshot, index.paths, index.err = analyzeWorkspaceFilesWithSnapshot(
 			ctx, doc.Root, "", open, doc.Includes, doc.Names, s.tokenCache,
+			previousSnapshot, previousPaths,
 		)
 		index.diagnosticErr = index.err
 		closeDiagnostics()
@@ -154,13 +166,17 @@ func (s *server) restartWorkspaceIndex(doc *document) {
 	}
 	s.mu.Lock()
 	var previous *analysis.Result
+	var previousSnapshot *query.Snapshot
+	var previousPaths map[string]struct{}
 	if current := s.workspaces[doc.Root]; current != nil && current.cancel != nil {
 		current.cancel()
 		previous = reusableWorkspaceGraph(current)
+		previousSnapshot = current.snapshot
+		previousPaths = cloneWorkspacePaths(current.paths)
 	}
 	delete(s.workspaces, doc.Root)
 	s.mu.Unlock()
-	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous, doc.PreviousEdit)
+	s.startWorkspaceIndexAfter(doc, 150*time.Millisecond, previous, doc.PreviousEdit, previousSnapshot, previousPaths)
 }
 
 func reusableWorkspaceGraph(index *workspaceIndex) *analysis.Result {
@@ -203,9 +219,26 @@ func analyzeWorkspaceFiles(
 	names sema.Resolver,
 	tokenCache *preprocess.TokenCache,
 ) (map[coresource.URI]*analysis.Result, error) {
+	files, _, _, err := analyzeWorkspaceFilesWithSnapshot(
+		ctx, root, entry, open, includes, names, tokenCache, nil, nil,
+	)
+	return files, err
+}
+
+func analyzeWorkspaceFilesWithSnapshot(
+	ctx context.Context,
+	root string,
+	entry string,
+	open map[string][]byte,
+	includes preprocess.IncludeResolver,
+	names sema.Resolver,
+	tokenCache *preprocess.TokenCache,
+	previous *query.Snapshot,
+	previousPaths map[string]struct{},
+) (map[coresource.URI]*analysis.Result, *query.Snapshot, map[string]struct{}, error) {
 	paths, err := workspaceSourceFiles(root)
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 	selected := paths[:0]
 	for _, path := range paths {
@@ -218,26 +251,77 @@ func analyzeWorkspaceFiles(
 	}
 	paths = selected
 	sort.Strings(paths)
-	snapshot := query.New()
+	loaded := make([]struct {
+		path string
+		text []byte
+	}, 0, len(paths))
+	currentPaths := make(map[string]struct{}, len(paths))
 	for _, path := range paths {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
 		text, err := os.ReadFile(path) //nolint:gosec // Paths come from the bounded workspace scan.
 		if err != nil {
+			return nil, nil, nil, err
+		}
+		currentPaths[workspacePathKey(path)] = struct{}{}
+		loaded = append(loaded, struct {
+			path string
+			text []byte
+		}{path: path, text: text})
+	}
+
+	snapshot := query.New()
+	if previous != nil && sameWorkspacePaths(previousPaths, currentPaths) {
+		snapshot = previous
+	}
+	for _, file := range loaded {
+		uri := coresource.FileURI(file.path)
+		document := query.Document{URI: uri, Text: file.text, Version: 1}
+		if snapshot != previous {
+			snapshot, _ = snapshot.UpdateOwned(document)
 			continue
 		}
-		uri := coresource.FileURI(path)
-		snapshot, _ = snapshot.Update(query.Document{URI: uri, Text: text, Version: 1})
+		old, ok := snapshot.Document(uri)
+		if ok && bytes.Equal(old.Text, file.text) {
+			continue
+		}
+		if ok {
+			document.Version = old.Version + 1
+		}
+		snapshot, _ = snapshot.UpdateOwned(document)
 	}
 	workspace, err := snapshot.AnalyzeWorkspace(ctx, analysis.Options{
 		Includes: includes, Names: names, Revision: root, MaxOutputTokens: analysisOutputTokenLimit,
 		TokenCache: tokenCache, SkipSemantics: true,
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
-	return workspace.Files, nil
+	return workspace.Files, snapshot, currentPaths, nil
+}
+
+func cloneWorkspacePaths(paths map[string]struct{}) map[string]struct{} {
+	if paths == nil {
+		return nil
+	}
+	clone := make(map[string]struct{}, len(paths))
+	for path := range paths {
+		clone[path] = struct{}{}
+	}
+	return clone
+}
+
+func sameWorkspacePaths(left, right map[string]struct{}) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for path := range left {
+		if _, ok := right[path]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func analyzeWorkspaceEntry(

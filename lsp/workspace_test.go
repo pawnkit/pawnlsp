@@ -206,6 +206,67 @@ func TestWorkspaceEntryReusesPreviousAnalysis(t *testing.T) {
 	}
 }
 
+func TestWorkspaceIndexReusesUnchangedFiles(t *testing.T) {
+	root := t.TempDir()
+	paths := []string{
+		filepath.Join(root, "first.inc"),
+		filepath.Join(root, "second.inc"),
+	}
+	for index, path := range paths {
+		content := []byte("stock First() {}\n")
+		if index == 1 {
+			content = []byte("stock Second() {}\n")
+		}
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, snapshot, previousPaths, err := analyzeWorkspaceFilesWithSnapshot(
+		context.Background(), root, "", nil, nil, nil, nil, nil, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repeated, repeatedSnapshot, repeatedPaths, err := analyzeWorkspaceFilesWithSnapshot(
+		context.Background(), root, "", nil, nil, nil, nil, snapshot, previousPaths,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repeatedSnapshot != snapshot || !sameWorkspacePaths(previousPaths, repeatedPaths) {
+		t.Fatal("unchanged workspace snapshot was not retained")
+	}
+	if first[coresource.FileURI(paths[0])] != repeated[coresource.FileURI(paths[0])] {
+		t.Fatal("unchanged workspace completion was rebuilt")
+	}
+
+	changed := []byte("stock Changed() {}\n")
+	if err := os.WriteFile(paths[1], changed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, nextSnapshot, nextPaths, err := analyzeWorkspaceFilesWithSnapshot(
+		context.Background(), root, "", nil, nil, nil, nil, snapshot, previousPaths,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameWorkspacePaths(previousPaths, nextPaths) {
+		t.Fatal("workspace file set changed unexpectedly")
+	}
+	if nextSnapshot == snapshot {
+		t.Fatal("changed file did not create a new snapshot")
+	}
+	firstChanged := first[coresource.FileURI(paths[1])]
+	secondChanged := second[coresource.FileURI(paths[1])]
+	if firstChanged == nil || secondChanged == nil {
+		t.Fatal("changed file result missing")
+	}
+	if firstChanged == secondChanged {
+		t.Fatal("changed file analysis was reused")
+	}
+}
+
 func TestActiveProjectOwnsNestedDependency(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "dependencies", "library", "include.inc")

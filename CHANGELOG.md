@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.34.11 - 2026-08-03
+
+### Performance
+
+- Reuse unchanged closed-file workspace results across index restarts.
+- Invalidate completed results when exported workspace declarations change.
+
 ## 0.34.10 - 2026-08-03
 
 ### Changed
