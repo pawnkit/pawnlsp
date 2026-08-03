@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.25 - 2026-08-03
+
+### Changed
+
+- Use the current pawnfmt and pawnlint releases in the language server.
+
 ## 0.34.24 - 2026-08-03
 
 ### Performance
