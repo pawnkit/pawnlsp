@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.29 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.46's flow-evaluation shortcut for strict linting.
+
 ## 0.34.28 - 2026-08-03
 
 ### Correctness
