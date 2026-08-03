@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.12 - 2026-08-03
+
+### Changed
+
+- Use pawn-api v0.19.6, pawnfmt v1.4.9, and pawnlint v1.8.36.
+
 ## 0.34.11 - 2026-08-03
 
 ### Performance
