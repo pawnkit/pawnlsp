@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.45 - 2026-08-04
+
+### Changed
+
+- Use the current pawn-api and pawnlint releases.
+
 ## 0.34.44 - 2026-08-03
 
 ### Performance
