@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.35 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.52's ordered loop call index for loop-scoped rules.
+
 ## 0.34.34 - 2026-08-03
 
 ### Performance
