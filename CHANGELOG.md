@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.44 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.24 and pawnlint v1.8.58 for workspace resolver reuse.
+
 ## 0.34.43 - 2026-08-03
 
 ### Performance
