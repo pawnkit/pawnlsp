@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.33 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.50's cached enclosing-function lookups.
+
 ## 0.34.32 - 2026-08-03
 
 ### Performance
