@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.22 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.41 for target-aware cached control-flow models.
+
 ## 0.34.21 - 2026-08-03
 
 ### Performance
