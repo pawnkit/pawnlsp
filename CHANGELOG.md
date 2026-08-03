@@ -2,6 +2,10 @@
 
 Notable changes are recorded here.
 
+## 0.34.47 - 2026-08-04
+
+- Mark inactive conditional directives and their conditions in semantic tokens.
+
 ## 0.34.46 - 2026-08-04
 
 ### Performance

@@ -143,12 +143,20 @@ func inactiveBranchRanges(doc *document, graph *analysis.Result) []semanticRange
 	}
 	var ranges []semanticRange
 	for _, branch := range result.Preprocess.Branches {
-		if branch.File != file || branch.Active || branch.BodySpan.Start >= branch.BodySpan.End {
+		if branch.File != file || branch.Active {
+			continue
+		}
+		start := branch.DirectiveSpan.Start
+		end := branch.BodySpan.End
+		if end <= start {
+			end = branch.DirectiveSpan.End
+		}
+		if start >= end {
 			continue
 		}
 		ranges = append(ranges, semanticRange{
-			start: coresource.Offset(branch.BodySpan.Start),
-			end:   coresource.Offset(branch.BodySpan.End),
+			start: coresource.Offset(start),
+			end:   coresource.Offset(end),
 		})
 	}
 	sort.Slice(ranges, func(i, j int) bool { return ranges[i].start < ranges[j].start })

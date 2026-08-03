@@ -33,6 +33,30 @@ func TestInactiveBranchUsesInactiveSemanticTokens(t *testing.T) {
 	}
 }
 
+func TestInactiveBranchDimsDirective(t *testing.T) {
+	text := []byte("#define FEATURE\n#if !defined FEATURE\nstock Hidden() {}\n#endif\n")
+	result := analysis.Analyze(text, analysis.Options{URI: coresource.FileURI("main.pwn")})
+	doc := &document{Text: text, Analysis: result}
+	start := coresource.Offset(strings.Index(string(text), "#if"))
+	condition := coresource.Offset(strings.Index(string(text), "defined"))
+
+	var directive, expression bool
+	for _, item := range collectSemanticTokens(doc, nil) {
+		if item.tokenType != semanticInactive {
+			continue
+		}
+		if item.start == start {
+			directive = true
+		}
+		if item.start == condition {
+			expression = true
+		}
+	}
+	if !directive || !expression {
+		t.Fatalf("inactive directive tokens = directive %v, expression %v", directive, expression)
+	}
+}
+
 func TestInactiveBranchUsesEntryIncludeState(t *testing.T) {
 	include := []byte("#if !defined FEATURE\nstock Hidden() {}\n#endif\nstock Visible() {}\n")
 	uri := coresource.FileURI("guarded.inc")
