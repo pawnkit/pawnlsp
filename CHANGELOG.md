@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.16 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.16 and pawn-parser v1.5.11 for cheaper local edits.
+
 ## 0.34.15 - 2026-08-03
 
 ### Performance
