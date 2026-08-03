@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.19 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.19 for cheaper workspace indexing.
+
 ## 0.34.18 - 2026-08-03
 
 ### Performance
