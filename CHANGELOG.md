@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.28 - 2026-08-03
+
+### Correctness
+
+- Use pawnlint's inactive-branch guard for constant-condition diagnostics.
+
 ## 0.34.27 - 2026-08-03
 
 ### Performance
