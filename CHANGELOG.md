@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.23 - 2026-08-03
+
+### Fixed
+
+- Republish the release after a provenance attestation lookup failure.
+
 ## 0.34.22 - 2026-08-03
 
 ### Performance
