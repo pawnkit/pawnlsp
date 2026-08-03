@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.41 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.22 and pawnlint v1.8.55 for workspace semantic reuse.
+
 ## 0.34.40 - 2026-08-03
 
 ### Performance
