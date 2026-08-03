@@ -86,6 +86,10 @@ parsing every closed file twice.
 Rapid edits keep one active diagnostic run and replace a single pending run.
 Cancelled or superseded versions cannot publish results.
 
+Pull diagnostics now refresh twice for a changed document: once when analysis
+is ready and again when lint finishes. Editors can show syntax and semantic
+findings without waiting for the full lint pass.
+
 An unchanged 50,000-line diagnostic pull takes about 0.6 µs and allocates
 432 bytes. The server reuses the document line index and returns an unchanged
 result ID after the first pull.

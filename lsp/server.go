@@ -1023,6 +1023,9 @@ func (s *server) publish(ctx context.Context, doc *document, snapshot *query.Sna
 	}
 	doc.Analysis = shared
 	doc.markAnalysisReady()
+	if s.document(doc.URI) == doc {
+		s.requestDiagnosticRefresh()
+	}
 	lintFn := s.lint
 	if lintFn == nil {
 		lintFn = lintDocument

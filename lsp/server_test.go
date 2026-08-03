@@ -450,6 +450,9 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	if doc.Analysis == nil {
 		t.Fatal("analysis was not stored before lint")
 	}
+	if got := strings.Count(output.String(), `"method":"workspace/diagnostic/refresh"`); got != 1 {
+		t.Fatalf("analysis refresh count = %d, output: %s", got, output.String())
+	}
 	params, err := json.Marshal(map[string]any{"textDocument": map[string]any{"uri": doc.URI}})
 	if err != nil {
 		t.Fatal(err)
@@ -468,8 +471,8 @@ func TestPublishMakesAnalysisReadyBeforeLint(t *testing.T) {
 	close(releaseLint)
 	waitForSignal(t, doc.ready, "full diagnostics")
 	s.workers.Wait()
-	if !strings.Contains(output.String(), `"method":"workspace/diagnostic/refresh"`) {
-		t.Fatalf("diagnostic refresh missing: %s", output.String())
+	if got := strings.Count(output.String(), `"method":"workspace/diagnostic/refresh"`); got != 2 {
+		t.Fatalf("full diagnostic refresh count = %d, output: %s", got, output.String())
 	}
 }
 

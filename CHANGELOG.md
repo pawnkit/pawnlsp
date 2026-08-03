@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.13 - 2026-08-03
+
+### Diagnostics
+
+- Refresh pull diagnostics when analysis is ready, before the full lint pass.
+
 ## 0.34.12 - 2026-08-03
 
 ### Changed
