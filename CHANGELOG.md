@@ -2,7 +2,7 @@
 
 Notable changes are recorded here.
 
-## Unreleased
+## 0.34.43 - 2026-08-03
 
 ### Performance
 
