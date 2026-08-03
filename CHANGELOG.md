@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.34 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.51's shared loop indexes for performance checks.
+
 ## 0.34.33 - 2026-08-03
 
 ### Performance
