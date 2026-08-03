@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.40 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.21 and pawnlint v1.8.54 for incremental name checks.
+
 ## 0.34.39 - 2026-08-03
 
 ### CI
