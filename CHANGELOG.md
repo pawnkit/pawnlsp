@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.36 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.53's cached shared diagnostic mappings.
+
 ## 0.34.35 - 2026-08-03
 
 ### Performance
