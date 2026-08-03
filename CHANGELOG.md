@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.24 - 2026-08-03
+
+### Performance
+
+- Keep the workspace index for root edits confined to a function body.
+
 ## 0.34.23 - 2026-08-03
 
 ### Fixed

@@ -206,6 +206,69 @@ func TestWorkspaceEntryReusesPreviousAnalysis(t *testing.T) {
 	}
 }
 
+func TestRootFunctionBodyEditSkipsWorkspaceReindex(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.pwn")
+	source := []byte("main() {\n    new value = 1;\n    return value;\n}\n")
+	previous := analysis.Analyze(source, analysis.Options{URI: coresource.FileURI(path)})
+	start := bytes.Index(source, []byte("1"))
+	if start < 0 {
+		t.Fatal("edit target not found")
+	}
+	doc := &document{
+		Path: path, Root: root, Entry: path, Text: source, StaleAnalysis: previous,
+		PreviousEdit: &preprocess.CompatibleEdit{
+			Before: preprocess.ByteRange{Start: start, End: start + 1},
+			After:  preprocess.ByteRange{Start: start, End: start + 1},
+		},
+	}
+	if rootEditRequiresWorkspaceReindex(doc) {
+		t.Fatal("function-body edit restarted workspace indexing")
+	}
+}
+
+func TestRootTopLevelEditRequiresWorkspaceReindex(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.pwn")
+	source := []byte("new Global = 1;\nmain() { return Global; }\n")
+	previous := analysis.Analyze(source, analysis.Options{URI: coresource.FileURI(path)})
+	start := bytes.Index(source, []byte("Global"))
+	if start < 0 {
+		t.Fatal("edit target not found")
+	}
+	doc := &document{
+		Path: path, Root: root, Entry: path, Text: source, StaleAnalysis: previous,
+		PreviousEdit: &preprocess.CompatibleEdit{
+			Before: preprocess.ByteRange{Start: start, End: start + len("Global")},
+			After:  preprocess.ByteRange{Start: start, End: start + len("Global")},
+		},
+	}
+	if !rootEditRequiresWorkspaceReindex(doc) {
+		t.Fatal("top-level edit did not restart workspace indexing")
+	}
+}
+
+func TestRootDirectiveEditRequiresWorkspaceReindex(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.pwn")
+	source := []byte("main() {\n#if defined FLAG\n    return 1;\n#endif\n}\n")
+	previous := analysis.Analyze(source, analysis.Options{URI: coresource.FileURI(path)})
+	start := bytes.Index(source, []byte("defined"))
+	if start < 0 {
+		t.Fatal("edit target not found")
+	}
+	doc := &document{
+		Path: path, Root: root, Entry: path, Text: source, StaleAnalysis: previous,
+		PreviousEdit: &preprocess.CompatibleEdit{
+			Before: preprocess.ByteRange{Start: start, End: start + len("defined")},
+			After:  preprocess.ByteRange{Start: start, End: start + len("defined")},
+		},
+	}
+	if !rootEditRequiresWorkspaceReindex(doc) {
+		t.Fatal("directive edit did not restart workspace indexing")
+	}
+}
+
 func TestWorkspaceIndexReusesUnchangedFiles(t *testing.T) {
 	root := t.TempDir()
 	paths := []string{

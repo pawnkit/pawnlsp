@@ -807,7 +807,7 @@ func (s *server) workspaceEditRequiresReindex(doc *document) bool {
 		return true
 	}
 	if workspacePathKey(doc.Path) == workspacePathKey(doc.Entry) {
-		return true
+		return rootEditRequiresWorkspaceReindex(doc)
 	}
 	if index.graph == nil {
 		return true

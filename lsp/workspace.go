@@ -17,6 +17,7 @@ import (
 	"github.com/pawnkit/pawn-analysis/query"
 	"github.com/pawnkit/pawn-analysis/sema"
 	"github.com/pawnkit/pawn-analysis/symbol"
+	parser "github.com/pawnkit/pawn-parser"
 	coresource "github.com/pawnkit/pawnkit-core/source"
 )
 
@@ -46,6 +47,64 @@ type workspaceOccurrence struct {
 	text        []byte
 	span        coresource.Span
 	declaration bool
+}
+
+// rootEditRequiresWorkspaceReindex keeps function-body edits local.
+func rootEditRequiresWorkspaceReindex(doc *document) bool {
+	if doc == nil || doc.PreviousEdit == nil || doc.StaleAnalysis == nil ||
+		doc.StaleAnalysis.Parse == nil || doc.StaleAnalysis.Preprocess == nil {
+		return true
+	}
+	edit := doc.PreviousEdit.Before
+	if editTouchesDirective(doc.StaleAnalysis.Preprocess.Source, edit) ||
+		editTouchesDirective(doc.text(), doc.PreviousEdit.After) {
+		return true
+	}
+	root := doc.StaleAnalysis.Parse.Syntax()
+	declarations := root.Declarations()
+	for declarations.Next() {
+		declaration := declarations.Declaration()
+		if declaration.Kind() != parser.KindFunctionDefinition {
+			continue
+		}
+		body, ok := declaration.Field("body")
+		if ok && edit.Start >= body.Range().Start && edit.End <= body.Range().End {
+			return false
+		}
+	}
+	return true
+}
+
+func editTouchesDirective(src []byte, changed preprocess.ByteRange) bool {
+	if len(src) == 0 || changed.Start < 0 || changed.End < changed.Start || changed.End > len(src) {
+		return true
+	}
+	start := changed.Start
+	if start == len(src) && start > 0 {
+		start--
+	}
+	for start > 0 && src[start-1] != '\n' {
+		start--
+	}
+	end := changed.End
+	for end < len(src) && src[end] != '\n' {
+		end++
+	}
+	for line := start; line <= end && line < len(src); {
+		lineEnd := line
+		for lineEnd < len(src) && src[lineEnd] != '\n' {
+			lineEnd++
+		}
+		position := line
+		for position < lineEnd && (src[position] == ' ' || src[position] == '\t') {
+			position++
+		}
+		if position < lineEnd && src[position] == '#' {
+			return true
+		}
+		line = lineEnd + 1
+	}
+	return false
 }
 
 func (s *server) startWorkspaceIndex(doc *document) {
