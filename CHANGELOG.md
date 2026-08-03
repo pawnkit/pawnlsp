@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.14 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.15 for lower-allocation same-length edits.
+
 ## 0.34.13 - 2026-08-03
 
 ### Diagnostics
