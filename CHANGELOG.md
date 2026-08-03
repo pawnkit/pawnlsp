@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.46 - 2026-08-04
+
+### Performance
+
+- Use pawnlint v1.8.60's lazy assignment and symbol indexes.
+
 ## 0.34.45 - 2026-08-04
 
 ### Changed
