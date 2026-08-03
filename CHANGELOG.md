@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.21 - 2026-08-03
+
+### Performance
+
+- Use pawnlint v1.8.39 for cached editor project models.
+
 ## 0.34.20 - 2026-08-03
 
 ### Performance
