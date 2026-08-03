@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.26 - 2026-08-03
+
+### Performance
+
+- Reuse the cached pointer parse in editor linting.
+
 ## 0.34.25 - 2026-08-03
 
 ### Changed
