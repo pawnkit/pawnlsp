@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.34.18 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.18, which reuses completion option hashes across a
+  workspace snapshot.
+
 ## 0.34.17 - 2026-08-03
 
 ### Performance
