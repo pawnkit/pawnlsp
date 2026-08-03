@@ -2,6 +2,13 @@
 
 Notable changes are recorded here.
 
+## 0.34.17 - 2026-08-03
+
+### Performance
+
+- Use pawn-analysis v0.30.17 to cache workspace resolver fingerprints during
+  multi-file completion.
+
 ## 0.34.16 - 2026-08-03
 
 ### Performance
