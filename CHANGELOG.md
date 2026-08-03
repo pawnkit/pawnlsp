@@ -2,6 +2,12 @@
 
 Notable changes are recorded here.
 
+## 0.34.37 - 2026-08-03
+
+### Correctness
+
+- Keep open documents in document diagnostics instead of repeating them in workspace diagnostics.
+
 ## 0.34.36 - 2026-08-03
 
 ### Performance

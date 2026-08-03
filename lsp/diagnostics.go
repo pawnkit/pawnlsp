@@ -77,6 +77,10 @@ func (s *server) workspaceDiagnostics(ctx context.Context, id, raw json.RawMessa
 	for _, index := range s.workspaces {
 		indexes = append(indexes, index)
 	}
+	open := make(map[string]struct{}, len(s.documents))
+	for uri := range s.documents {
+		open[uri] = struct{}{}
+	}
 	s.mu.Unlock()
 
 	items := make([]map[string]any, 0)
@@ -94,6 +98,9 @@ func (s *server) workspaceDiagnostics(ctx context.Context, id, raw json.RawMessa
 				if !workspaceDiagnosticURI(index.root, uri) {
 					continue
 				}
+				if _, isOpen := open[uri.String()]; isOpen {
+					continue
+				}
 				items = append(items, map[string]any{
 					"uri": uri.String(), "kind": "full", "items": dedupeDiagnostics(diagnostics),
 				})
@@ -101,6 +108,9 @@ func (s *server) workspaceDiagnostics(ctx context.Context, id, raw json.RawMessa
 			continue
 		}
 		for uri, result := range index.files {
+			if _, isOpen := open[uri.String()]; isOpen {
+				continue
+			}
 			items = append(items, map[string]any{
 				"uri": uri.String(), "kind": "full", "items": standaloneWorkspaceDiagnosticItems(uri, result),
 			})

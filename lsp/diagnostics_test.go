@@ -1,7 +1,11 @@
 package lsp
 
 import (
+	"bufio"
+	"bytes"
+	"context"
 	"encoding/json"
+	"path/filepath"
 	"testing"
 
 	analysis "github.com/pawnkit/pawn-analysis"
@@ -12,6 +16,64 @@ import (
 	"github.com/pawnkit/pawnlint/pkg/lint"
 	"github.com/pawnkit/pawnlint/pkg/rules"
 )
+
+func TestWorkspaceDiagnosticsSkipsOpenDocuments(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "main.pwn")
+	uri := coresource.FileURI(path).String()
+	result := analysis.Analyze([]byte("main() { Missing(); }\n"), analysis.Options{
+		URI:   coresource.URI(uri),
+		Names: sema.MapResolver{},
+	})
+	if len(result.Diagnostics) == 0 {
+		t.Fatal("analysis produced no diagnostic for the test source")
+	}
+
+	var output bytes.Buffer
+	s := &server{
+		out:       &output,
+		documents: map[string]*document{uri: {URI: uri, Path: path, Root: root}},
+		workspaces: map[string]*workspaceIndex{root: {
+			root: root, ready: closedChannel(), diagnosticsReady: closedChannel(), graph: result,
+		}},
+	}
+	readItems := func() []struct {
+		URI string `json:"uri"`
+	} {
+		body, err := readFrame(bufio.NewReader(bytes.NewReader(output.Bytes())))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			Result struct {
+				Items []struct {
+					URI string `json:"uri"`
+				} `json:"items"`
+			} `json:"result"`
+		}
+		if err := json.Unmarshal(body, &response); err != nil {
+			t.Fatal(err)
+		}
+		return response.Result.Items
+	}
+
+	if err := s.workspaceDiagnostics(context.Background(), json.RawMessage("1"), json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	if items := readItems(); len(items) != 0 {
+		t.Fatalf("open document diagnostics = %#v, want none", items)
+	}
+
+	output.Reset()
+	delete(s.documents, uri)
+	if err := s.workspaceDiagnostics(context.Background(), json.RawMessage("2"), json.RawMessage(`{}`)); err != nil {
+		t.Fatal(err)
+	}
+	items := readItems()
+	if len(items) != 1 || items[0].URI != uri {
+		t.Fatalf("closed document diagnostics = %#v, want %q", items, uri)
+	}
+}
 
 func TestEmptyDiagnosticsEncodeAsArray(t *testing.T) {
 	body, err := json.Marshal(map[string]any{"items": dedupeDiagnostics(nil)})
